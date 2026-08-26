@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบสรุปใบเสร็จเอนกประสงค์เพื่อเบิกจ่าย (Universal Receipt Summary App)</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Font Sarabun -->
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Sarabun', sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen text-slate-800 pb-12">
+
+    <!-- Header Banner -->
+    <header class="bg-indigo-700 text-white shadow-md py-6 px-4 mb-8">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+                <h1 class="text-2xl font-bold tracking-wide">🧾 ระบบสรุปใบเสร็จทุกประเภทเพื่อเบิกจ่ายเงิน</h1>
+                <p class="text-indigo-100 text-sm mt-1">สแกนใบเสร็จ (ค่าทางด่วน, น้ำมัน, อาหาร, ซื้อสินค้า, ค่าบริการ) อัตโนมัติด้วย AI (Gemini Flash Lite 3.5)</p>
+            </div>
+            <div class="flex items-center bg-indigo-800 px-4 py-2 rounded-lg border border-indigo-600 w-full md:w-auto">
+                <label for="apiKey" class="text-xs font-semibold text-indigo-200 mr-2 whitespace-nowrap">API Key:</label>
+                <input type="password" id="apiKey" placeholder="ใส่ Gemini API Key ที่นี่" 
+                       class="bg-indigo-950 text-white text-sm px-3 py-1.5 rounded focus:outline-none focus:ring-2 focus:ring-indigo-400 w-full md:w-64">
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 space-y-6">
+
+        <!-- Upload & Control Section -->
+        <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+            <h2 class="text-lg font-bold text-slate-700 mb-4 flex items-center gap-2">
+                <span>📁</span> อัปโหลดรูปภาพใบเสร็จ (รองรับทุกประเภท)
+            </h2>
+            
+            <div class="flex flex-col md:flex-row gap-4 items-center">
+                <!-- Dropzone Input -->
+                <div class="w-full flex-1">
+                    <label for="imageInput" class="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-indigo-300 rounded-lg cursor-pointer bg-indigo-50/50 hover:bg-indigo-50 transition-colors">
+                        <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                            <svg class="w-8 h-8 mb-2 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 0115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                            </svg>
+                            <p class="text-sm text-slate-600"><span class="font-semibold text-indigo-600">คลิกเพื่อเลือกรูป</span> หรือลากไฟล์มาวางที่นี่</p>
+                            <p class="text-xs text-slate-400 mt-1">รองรับไฟล์ JPG, PNG, WEBP (เลือกได้หลายรูปพร้อมกัน)</p>
+                        </div>
+                        <input id="imageInput" type="file" multiple accept="image/*" class="hidden" onchange="handleFileSelect(event)">
+                    </label>
+                </div>
+
+                <!-- Process Button -->
+                <div class="w-full md:w-auto flex flex-col gap-2">
+                    <button id="processBtn" onclick="processImages()" 
+                            class="w-full md:w-48 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-lg shadow transition-all flex items-center justify-center gap-2 disabled:bg-slate-300 disabled:cursor-not-allowed">
+                        <span>✨</span> ประมวลผลด้วย AI
+                    </button>
+                    <span id="fileCountText" class="text-xs text-center text-slate-500">ยังไม่ได้เลือกไฟล์</span>
+                </div>
+            </div>
+
+            <!-- Preview Thumbnails -->
+            <div id="previewContainer" class="flex flex-wrap gap-3 mt-4 hidden"></div>
+        </section>
+
+        <!-- Loading / Status Alert -->
+        <div id="statusAlert" class="hidden p-4 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 flex items-center gap-3">
+            <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-700"></div>
+            <span id="statusMessage" class="text-sm font-medium">กำลังอ่านข้อมูลจากใบเสร็จ...</span>
+        </div>
+
+        <!-- Data Summary Table Section -->
+        <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-700 flex items-center gap-2">
+                        <span>📊</span> ตารางสรุปรายการเบิกจ่ายเงิน
+                    </h2>
+                    <p class="text-xs text-slate-500">ตรวจสอบ แก้ไขข้อมูล และเลือกหมวดหมู่ได้ในตาราง ระบบจะคำนวณยอดรวมให้อัตโนมัติ</p>
+                </div>
+                
+                <div class="flex flex-wrap gap-2">
+                    <button onclick="addRow()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium py-2 px-4 rounded-lg border border-slate-300 transition-colors flex items-center gap-1">
+                        <span>➕</span> เพิ่มรายการ
+                    </button>
+                    <button onclick="clearAllRows()" class="bg-red-50 hover:bg-red-100 text-red-600 text-sm font-medium py-2 px-4 rounded-lg border border-red-200 transition-colors">
+                        ล้างข้อมูลทั้งหมด
+                    </button>
+                    <button onclick="exportToCSV()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold py-2 px-5 rounded-lg shadow transition-colors flex items-center gap-1">
+                        <span>📥</span> ส่งออก CSV (Excel)
+                    </button>
+                </div>
+            </div>
+
+            <!-- Table Container -->
+            <div class="overflow-x-auto rounded-lg border border-slate-200">
+                <table class="w-full text-left border-collapse text-sm">
+                    <thead>
+                        <tr class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
+                            <th class="py-3 px-3 text-center w-12">ลำดับ</th>
+                            <th class="py-3 px-3 w-32">วันที่ / เวลา</th>
+                            <th class="py-3 px-3 w-36">หมวดหมู่</th>
+                            <th class="py-3 px-3">ร้านค้า / ผู้ให้บริการ / ด่าน</th>
+                            <th class="py-3 px-3 w-36">เลขที่ใบเสร็จ</th>
+                            <th class="py-3 px-3 w-28 text-right">VAT (บาท)</th>
+                            <th class="py-3 px-3 w-32 text-right">จำนวนเงินรวม</th>
+                            <th class="py-3 px-3 text-center w-16">ลบ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="receiptTableBody" class="divide-y divide-slate-100">
+                        <tr id="emptyRow" class="text-slate-400 text-center py-8">
+                            <td colspan="8" class="py-8">ยังไม่มีข้อมูล โปรดอัปโหลดรูปภาพใบเสร็จเพื่อประมวลผล หรือกดเพิ่มรายการ</td>
+                        </tr>
+                    </tbody>
+                    <tfoot>
+                        <tr class="bg-slate-50 font-bold text-slate-800 border-t-2 border-slate-300">
+                            <td colspan="5" class="py-3 px-4 text-right">ยอดรวมทั้งหมด (Grand Total):</td>
+                            <td id="vatTotal" class="py-3 px-3 text-right text-xs text-slate-600 font-semibold">0.00</td>
+                            <td id="grandTotal" class="py-3 px-3 text-right text-base text-indigo-700 font-extrabold">0.00</td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        // Store selected files
+        let selectedFiles = [];
+
+        // Save & Restore API Key from localStorage
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedKey = localStorage.getItem('gemini_api_key');
+            if (savedKey) {
+                document.getElementById('apiKey').value = savedKey;
+            }
+        });
+
+        document.getElementById('apiKey').addEventListener('input', (e) => {
+            localStorage.setItem('gemini_api_key', e.target.value.trim());
+        });
+
+        // Handle Image Selection & Preview
+        function handleFileSelect(event) {
+            const files = Array.from(event.target.files);
+            if (files.length === 0) return;
+
+            selectedFiles = files;
+            document.getElementById('fileCountText').innerText = `เลือกแล้ว ${selectedFiles.length} ไฟล์`;
+            
+            const previewContainer = document.getElementById('previewContainer');
+            previewContainer.innerHTML = '';
+            previewContainer.classList.remove('hidden');
+
+            selectedFiles.forEach((file) => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const div = document.createElement('div');
+                    div.className = 'relative w-20 h-20 border border-slate-200 rounded-lg overflow-hidden bg-slate-100 shadow-sm';
+                    div.innerHTML = `<img src="${e.target.result}" class="w-full h-full object-cover">`;
+                    previewContainer.appendChild(div);
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // Convert File to Base64
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => {
+                    const base64String = reader.result.split(',')[1];
+                    resolve(base64String);
+                };
+                reader.onerror = error => reject(error);
+            });
+        }
+
+        // Process Images using Gemini Flash Lite 3.5 API
+        async function processImages() {
+            const apiKey = document.getElementById('apiKey').value.trim();
+            if (!apiKey) {
+                alert('โปรดระบุ Gemini API Key ก่อนทำการประมวลผล');
+                return;
+            }
+
+            if (selectedFiles.length === 0) {
+                alert('โปรดเลือกไฟล์รูปภาพใบเสร็จอย่างน้อย 1 ไฟล์');
+                return;
+            }
+
+            const statusAlert = document.getElementById('statusAlert');
+            const statusMessage = document.getElementById('statusMessage');
+            const processBtn = document.getElementById('processBtn');
+
+            statusAlert.classList.remove('hidden');
+            processBtn.disabled = true;
+
+            // Strict Model specification: Gemini Flash Lite 3.5
+            const MODEL_NAME = 'gemini-flash-lite-3.5';
+            const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${apiKey}`;
+
+            const promptText = `
+คุณเป็นระบบอ่านและสกัดข้อมูลจากใบเสร็จ/ใบกำกับภาษีทุกรูปแบบ (เช่น ค่าทางด่วน, ค่าน้ำมัน, ค่าอาหาร, ซื้อสินค้า, ค่าบริการ)
+โปรดอ่านข้อมูลจากภาพใบเสร็จที่ส่งมา และตอบกลับเป็น JSON Array โดยมีรูปแบบโครงสร้างข้อมูลของแต่ละวัตถุดังนี้:
+[
+  {
+    "date": "วันที่และเวลา เช่น 27/10/2025 08:23 หรือ 27/10/2568",
+    "category": "ระบุหมวดหมู่ที่เหมาะสมที่สุดเพียง 1 อย่าง จาก: ค่าทางด่วน, น้ำมัน, อาหารและเครื่องดื่ม, ซื้อสินค้า/อุปกรณ์, ค่าบริการ, ค่าเดินทาง/แท็กซี่, อื่นๆ",
+    "merchant": "ชื่อร้านค้า ผู้ให้บริการ สถานีบริการน้ำมัน หรือชื่อด่านทางด่วน",
+    "receipt_no": "เลขที่ใบเสร็จ เลขที่ใบกำกับภาษี หรือเลขที่เล่ม",
+    "vat": 0.00,
+    "amount": 100.00
+  }
+]
+หมายเหตุ:
+- vat และ amount ให้ใส่เฉพาะตัวเลขเท่านั้น (float/number) ถ้าไม่มี VAT ให้ใส่ 0.00
+- หากข้อมูลส่วนใดอ่านไม่ได้ ให้ใส่ข้อความ "-"
+- ตอบกลับเฉพาะโครงสร้าง JSON เท่านั้น ห้ามใส่ข้อความเกริ่นนำหรือ Markdown codeblock อื่นๆ
+            `.trim();
+
+            for (let i = 0; i < selectedFiles.length; i++) {
+                const file = selectedFiles[i];
+                statusMessage.innerText = `กำลังประมวลผลรูปที่ ${i + 1} จาก ${selectedFiles.length}... (${file.name})`;
+
+                try {
+                    const base64Data = await fileToBase64(file);
+                    
+                    const requestBody = {
+                        contents: [
+                            {
+                                parts: [
+                                    { text: promptText },
+                                    {
+                                        inline_data: {
+                                            mime_type: file.type || "image/jpeg",
+                                            data: base64Data
+                                        }
+                                    }
+                                ]
+                            }
+                        ],
+                        generationConfig: {
+                            response_mime_type: "application/json"
+                        }
+                    };
+
+                    const response = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(requestBody)
+                    });
+
+                    if (!response.ok) {
+                        const errData = await response.json();
+                        throw new Error(errData.error?.message || `HTTP error! status: ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    const textResponse = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+                    if (textResponse) {
+                        const parsedData = JSON.parse(textResponse);
+                        const items = Array.isArray(parsedData) ? parsedData : [parsedData];
+                        items.forEach(item => addRow(item));
+                    }
+
+                } catch (error) {
+                    console.error('Error processing image:', error);
+                    alert(`เกิดข้อผิดพลาดในการประมวลผลรูป ${file.name}: ${error.message}`);
+                }
+            }
+
+            statusAlert.classList.add('hidden');
+            processBtn.disabled = false;
+        }
+
+        // Categories List
+        const categories = [
+            "ค่าทางด่วน",
+            "น้ำมัน",
+            "อาหารและเครื่องดื่ม",
+            "ซื้อสินค้า/อุปกรณ์",
+            "ค่าบริการ",
+            "ค่าเดินทาง/แท็กซี่",
+            "อื่นๆ"
+        ];
+
+        // Add Row to Table
+        function addRow(data = {}) {
+            const tbody = document.getElementById('receiptTableBody');
+            const emptyRow = document.getElementById('emptyRow');
+            if (emptyRow) emptyRow.remove();
+
+            const rowCount = tbody.querySelectorAll('tr').length + 1;
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-slate-50 transition-colors border-b border-slate-100';
+
+            const selectedCat = data.category || "อื่นๆ";
+            let categoryOptions = categories.map(cat => 
+                `<option value="${cat}" ${cat === selectedCat ? 'selected' : ''}>${cat}</option>`
+            ).join('');
+
+            tr.innerHTML = `
+                <td class="py-2 px-3 text-center text-slate-500 font-medium row-number">${rowCount}</td>
+                <td class="py-2 px-2">
+                    <input type="text" value="${data.date || ''}" placeholder="วว/ดด/ปปปป" 
+                           class="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 focus:outline-none">
+                </td>
+                <td class="py-2 px-2">
+                    <select class="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 focus:outline-none bg-white">
+                        ${categoryOptions}
+                    </select>
+                </td>
+                <td class="py-2 px-2">
+                    <input type="text" value="${data.merchant || ''}" placeholder="ชื่อร้านค้า / สถานบริการ" 
+                           class="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 focus:outline-none">
+                </td>
+                <td class="py-2 px-2">
+                    <input type="text" value="${data.receipt_no || ''}" placeholder="เลขที่ใบเสร็จ" 
+                           class="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 focus:outline-none">
+                </td>
+                <td class="py-2 px-2">
+                    <input type="number" step="0.01" value="${data.vat !== undefined ? data.vat : 0}" placeholder="0.00" 
+                           oninput="calculateTotal()"
+                           class="vat-input w-full px-2 py-1 text-xs text-right border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 focus:outline-none text-slate-600">
+                </td>
+                <td class="py-2 px-2">
+                    <input type="number" step="0.01" value="${data.amount !== undefined ? data.amount : ''}" placeholder="0.00" 
+                           oninput="calculateTotal()"
+                           class="amount-input w-full px-2 py-1 text-xs text-right font-semibold border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 focus:outline-none text-indigo-700">
+                </td>
+                <td class="py-2 px-2 text-center">
+                    <button onclick="deleteRow(this)" class="text-red-500 hover:text-red-700 font-bold p-1 rounded">
+                        ✕
+                    </button>
+                </td>
+            `;
+
+            tbody.appendChild(tr);
+            calculateTotal();
+        }
+
+        // Delete Single Row
+        function deleteRow(button) {
+            const tr = button.closest('tr');
+            tr.remove();
+            updateRowNumbers();
+            calculateTotal();
+        }
+
+        // Update Row Index Numbers
+        function updateRowNumbers() {
+            const rows = document.querySelectorAll('#receiptTableBody tr');
+            rows.forEach((row, index) => {
+                const cell = row.querySelector('.row-number');
+                if (cell) cell.innerText = index + 1;
+            });
+
+            if (rows.length === 0) {
+                const tbody = document.getElementById('receiptTableBody');
+                tbody.innerHTML = `
+                    <tr id="emptyRow" class="text-slate-400 text-center py-8">
+                        <td colspan="8" class="py-8">ยังไม่มีข้อมูล โปรดอัปโหลดรูปภาพใบเสร็จเพื่อประมวลผล หรือกดเพิ่มรายการ</td>
+                    </tr>
+                `;
+            }
+        }
+
+        // Clear All Rows
+        function clearAllRows() {
+            if (confirm('คุณต้องการลบรายการทั้งหมดในตารางใช่หรือไม่?')) {
+                const tbody = document.getElementById('receiptTableBody');
+                tbody.innerHTML = `
+                    <tr id="emptyRow" class="text-slate-400 text-center py-8">
+                        <td colspan="8" class="py-8">ยังไม่มีข้อมูล โปรดอัปโหลดรูปภาพใบเสร็จเพื่อประมวลผล หรือกดเพิ่มรายการ</td>
+                    </tr>
+                `;
+                calculateTotal();
+            }
+        }
+
+        // Calculate Total Amounts
+        function calculateTotal() {
+            const amountInputs = document.querySelectorAll('.amount-input');
+            const vatInputs = document.querySelectorAll('.vat-input');
+            
+            let totalAmount = 0;
+            let totalVat = 0;
+
+            amountInputs.forEach(input => {
+                const val = parseFloat(input.value);
+                if (!isNaN(val)) totalAmount += val;
+            });
+
+            vatInputs.forEach(input => {
+                const val = parseFloat(input.value);
+                if (!isNaN(val)) totalVat += val;
+            });
+
+            document.getElementById('vatTotal').innerText = totalVat.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            document.getElementById('grandTotal').innerText = totalAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        // Export Data to CSV (with Thai Language UTF-8 BOM)
+        function exportToCSV() {
+            const rows = document.querySelectorAll('#receiptTableBody tr');
+            if (rows.length === 0 || document.getElementById('emptyRow')) {
+                alert('ไม่มีข้อมูลสำหรับส่งออก CSV');
+                return;
+            }
+
+            let csvContent = "\uFEFF"; // UTF-8 BOM for Thai text in Excel
+            csvContent += "ลำดับ,วันที่/เวลา,หมวดหมู่,ร้านค้า/ผู้ให้บริการ,เลขที่ใบเสร็จ,VAT (บาท),จำนวนเงินรวม (บาท)\n";
+
+            rows.forEach(row => {
+                const rowNum = row.querySelector('.row-number')?.innerText || '';
+                const inputs = row.querySelectorAll('input');
+                const select = row.querySelector('select');
+
+                if (inputs.length >= 4 && select) {
+                    const date = `"${inputs[0].value.replace(/"/g, '""')}"`;
+                    const category = `"${select.value.replace(/"/g, '""')}"`;
+                    const merchant = `"${inputs[1].value.replace(/"/g, '""')}"`;
+                    const receiptNo = `"${inputs[2].value.replace(/"/g, '""')}"`;
+                    const vat = inputs[3].value || 0;
+                    const amount = inputs[4].value || 0;
+
+                    csvContent += `${rowNum},${date},${category},${merchant},${receiptNo},${vat},${amount}\n`;
+                }
+            });
+
+            // Calculate total lines for CSV
+            const vatTotal = document.getElementById('vatTotal').innerText.replace(/,/g, '');
+            const grandTotal = document.getElementById('grandTotal').innerText.replace(/,/g, '');
+            csvContent += `,,,,,${vatTotal},${grandTotal}\n`;
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.setAttribute('href', url);
+            link.setAttribute('download', `สรุปใบเสร็จเบิกจ่ายเงิน_${new Date().toISOString().slice(0, 10)}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>
