@@ -94,7 +94,7 @@
                     <h2 class="text-lg font-bold text-slate-700 flex items-center gap-2">
                         <span>📊</span> ตารางสรุปรายการเบิกจ่ายเงิน (เรียงตามวันที่)
                     </h2>
-                    <p class="text-xs text-slate-500">ตรวจสอบ แก้ไขข้อมูล และเลือกหมวดหมู่ได้ในตาราง ระบบจะคำนวณยอดรวมและเรียงวันที่ให้อัตโนมัติ</p>
+                    <p class="text-xs text-slate-500">ตรวจสอบ แก้ไขข้อมูล เลือกวันที่ด้วยปฏิทิน และเลือกหมวดหมู่ได้ในตาราง ระบบจะคำนวณยอดรวมและเรียงวันที่ให้อัตโนมัติ</p>
                 </div>
                 
                 <div class="flex flex-wrap gap-2">
@@ -122,7 +122,8 @@
                     <thead>
                         <tr class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
                             <th class="py-3 px-3 text-center w-12">ลำดับ</th>
-                            <th class="py-3 px-3 w-32">วันที่ (วัน/เดือน)</th>
+                            <th class="py-3 px-3 w-32">รูปใบเสร็จ</th>
+                            <th class="py-3 px-3 w-36">วันที่ (ปฏิทิน)</th>
                             <th class="py-3 px-3 w-36">หมวดหมู่</th>
                             <th class="py-3 px-3">ร้านค้า / ผู้ให้บริการ / ด่าน</th>
                             <th class="py-3 px-3 w-36">เลขที่ใบเสร็จ</th>
@@ -133,12 +134,12 @@
                     </thead>
                     <tbody id="receiptTableBody" class="divide-y divide-slate-100">
                         <tr id="emptyRow" class="text-slate-400 text-center py-8">
-                            <td colspan="8" class="py-8">ยังไม่มีข้อมูล โปรดอัปโหลดรูปภาพใบเสร็จเพื่อประมวลผล หรือกดเพิ่มรายการ</td>
+                            <td colspan="9" class="py-8">ยังไม่มีข้อมูล โปรดอัปโหลดรูปภาพใบเสร็จเพื่อประมวลผล หรือกดเพิ่มรายการ</td>
                         </tr>
                     </tbody>
                     <tfoot>
                         <tr class="bg-slate-50 font-bold text-slate-800 border-t-2 border-slate-300">
-                            <td colspan="5" class="py-3 px-4 text-right">ยอดรวมทั้งหมด (Grand Total):</td>
+                            <td colspan="6" class="py-3 px-4 text-right">ยอดรวมทั้งหมด (Grand Total):</td>
                             <td id="vatTotal" class="py-3 px-3 text-right text-xs text-slate-600 font-semibold">0.00</td>
                             <td id="grandTotal" class="py-3 px-3 text-right text-base text-indigo-700 font-extrabold">0.00</td>
                             <td></td>
@@ -180,18 +181,22 @@
             previewContainer.innerHTML = '';
             previewContainer.classList.remove('hidden');
 
-            selectedFiles.forEach((file) => {
+            selectedFiles.forEach((file, index) => {
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     uploadedImagesBase64.push({
+                        index: index + 1,
                         name: file.name,
                         type: file.type || 'image/jpeg',
                         data: e.target.result
                     });
 
                     const div = document.createElement('div');
-                    div.className = 'relative w-20 h-20 border border-slate-200 rounded-lg overflow-hidden bg-slate-100 shadow-sm';
-                    div.innerHTML = `<img src="${e.target.result}" class="w-full h-full object-cover">`;
+                    div.className = 'relative w-20 h-24 border border-slate-200 rounded-lg overflow-hidden bg-slate-100 shadow-sm flex flex-col items-center justify-between p-1';
+                    div.innerHTML = `
+                        <img src="${e.target.result}" class="w-full h-16 object-cover rounded">
+                        <span class="text-[10px] font-bold text-indigo-700">รูปที่ ${index + 1}</span>
+                    `;
                     previewContainer.appendChild(div);
                 };
                 reader.readAsDataURL(file);
@@ -211,54 +216,6 @@
             });
         }
 
-        // Helper to clean date string: Remove year and time, return DD/MM format
-        function cleanDateStr(dateStr) {
-            if (!dateStr || dateStr === '-') return '-';
-            
-            // Remove time portion if exists
-            let clean = dateStr.split(' ')[0].trim();
-            const parts = clean.split('/');
-
-            if (parts.length >= 2) {
-                const day = parts[0].trim().padStart(2, '0');
-                const month = parts[1].trim();
-                return `${day}/${month}`;
-            }
-            return clean;
-        }
-
-        // Helper to parse date string for sorting chronologically (from earliest to latest)
-        function parseDateToValue(dateStr) {
-            if (!dateStr || dateStr === '-') return 9999;
-            
-            let clean = dateStr.split(' ')[0].trim();
-            const parts = clean.split('/');
-            if (parts.length < 2) return 9999;
-
-            const day = parseInt(parts[0], 10) || 0;
-            const monthStr = parts[1].trim().toLowerCase();
-            let month = 0;
-
-            const thaiMonths = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
-            const engMonths = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
-
-            // Find Thai Month
-            let thaiIndex = thaiMonths.findIndex(m => monthStr.includes(m.replace('.', '')));
-            if (thaiIndex !== -1) {
-                month = thaiIndex + 1;
-            } else {
-                // Find Eng Month
-                let engIndex = engMonths.findIndex(m => monthStr.includes(m));
-                if (engIndex !== -1) {
-                    month = engIndex + 1;
-                } else {
-                    month = parseInt(monthStr, 10) || 0;
-                }
-            }
-
-            return (month * 100) + day;
-        }
-
         // Sort Table Rows Chronologically (Early -> Late)
         function sortTableByDate() {
             const tbody = document.getElementById('receiptTableBody');
@@ -266,9 +223,9 @@
             if (rows.length === 0) return;
 
             rows.sort((a, b) => {
-                const dateA = a.querySelectorAll('input')[0]?.value || '';
-                const dateB = b.querySelectorAll('input')[0]?.value || '';
-                return parseDateToValue(dateA) - parseDateToValue(dateB);
+                const dateA = a.querySelectorAll('input')[0]?.value || '9999-99-99';
+                const dateB = b.querySelectorAll('input')[0]?.value || '9999-99-99';
+                return dateA.localeCompare(dateB);
             });
 
             rows.forEach(row => tbody.appendChild(row));
@@ -303,30 +260,24 @@
 คุณเป็นระบบอ่านและสกัดข้อมูลจากใบเสร็จ/ใบกำกับภาษีทุกรูปแบบ (รวมถึงตั๋ว/บัตรผ่านทางพิเศษทางด่วน, ค่าน้ำมัน, ค่าอาหาร, ซื้อสินค้า, ค่าบริการ)
 
 *** กฎเหล็กสำหรับการระบุวันที่ ***
-- ให้ส่งคืนเฉพาะ "วัน/เดือน" ในฟิลด์ "date" เท่านั้น (เช่น "15/ก.ค.", "16/ม.ค.")
-- ห้ามใส่ปี พ.ศ./ค.ศ. และห้ามใส่เวลา (เช่น 18:40) เด็ดขาด
+- ให้ส่งคืนวันที่ในรูปแบบ ISO Standard "YYYY-MM-DD" ในฟิลด์ "date" เท่านั้น (เช่น "2026-07-21", "2026-01-15")
+- หากพบปี พ.ศ. ให้แปลงเป็น ค.ศ. (เช่น 2569 -> 2026) หากไม่ระบุปี ให้ใช้ปี 2026 เป็นปีมาตรฐาน
+- เดือนต้องเป็นตัวเลข 2 หลัก (01 - 12) และวันต้องเป็นตัวเลข 2 หลัก (01 - 31) เท่านั้น
 
-*** กฎสำคัญ: การอ่านวันที่และเดือนบนบัตรทางด่วนจากการเจาะรู (Punched Hole) ***
-บัตรทางด่วนจะใช้วิธีเจาะรู (วงกลมหรือรอยแหว่ง) ที่ขอบกระดาษเพื่อระบุวันที่และเดือน ให้วิเคราะห์ตามสเต็ปดังนี้:
+*** จำแนกประเภทใบเสร็จและตรรกะการอ่าน ***
+1. สลิป พิมพ์/ตั๋วความร้อน (เช่น สลิป BEM หรือใบเสร็จร้านค้าทั่วไป):
+   - อ่านวันที่จากข้อความบรรทัด Date / Time โดยตรง (เช่น "21/07/2026" ให้แปลงเป็น "2026-07-21")
 
-1. การหา "เดือน" (ขอบซ้ายและขวา):
-   - ขอบซ้าย (บนลงล่าง): ม.ค. (JAN), ก.พ. (FEB), มี.ค. (MAR), เม.ย. (APR), พ.ค. (MAY), มิ.ย. (JUN)
-   - ขอบขวา (บนลงล่าง): ก.ค. (JUL), ส.ค. (AUG), ก.ย. (SEP), ต.ค. (OCT), พ.ย. (NOV), ธ.ค. (DEC)
-   - ให้มองหา "รอยแหว่ง หรือ รูเจาะ" ที่ขอบกระดาษ
-   - กรณีเจาะหมิ่นๆ: หากรอยเจาะทับตัวอักษรใด แม้จะยังพออ่านออก ให้ถือว่าเดือนนั้นคือคำตอบ
-   - กรณีเจาะจนหายไป: หากรอยเจาะทำให้ข้อความหายไปทั้งหมด ให้อ้างอิงจากตำแหน่ง (Layout) ลำดับเดือนที่เหลืออยู่รอบๆ ว่าตำแหน่งที่แหว่งไปคือเดือนอะไร
+2. ตั๋วผ่านทางกระดาษแข็งแบบเจาะรู (EXAT):
+   - ห้ามอ้างอิง ทิศทางขอบภาพ (เพราะรูปอาจหมุน) ให้ใช้วิธีอ้างอิงเทียบกับบล็อกข้อความบนตั๋ว
+   - การหาเดือน: มองหาบล็อกชื่อเดือน "JAN-JUN" และ "JUL-DEC" บนตัวตั๋ว มองหารอยเจาะทับตัวอักษรหรือตำแหน่งที่ตัวอักษรขาดหาย แปลงเดือนที่เจาะเป็นตัวเลข 01-12 (เช่น JAN=01, FEB=02, ..., DEC=12)
+   - การหาวันที่: มองหาแถววงกลมตัวเลข "1-13" และ "14-31" บนตัวตั๋ว มองหารอยเจาะทับตัวเลข แปลงเป็นวันที่ 01-31 (เช่น 15=15, 7=07)
+   - เพิกเฉยต่อ "รูเจาะตรงกลางตั๋ว" บริเวณแผนที่ หรือรูที่ไม่เกี่ยวข้องกับการเลือกวัน/เดือน
 
-2. การหา "วันที่" (ขอบบนและล่าง):
-   - ขอบบน (ซ้ายไปขวา): ปี พ.ศ. ตามด้วยวันที่ 1 ถึง 13
-   - ขอบล่าง (ซ้ายไปขวา): วันที่ 14 ถึง 31
-   - ใช้ตรรกะเดียวกันกับการหาเดือน มองหารอยเจาะ และดูว่ามันทับตัวเลขใด หรือทำให้ตำแหน่งของตัวเลขใดหายไปตามลำดับ
-
-ตอบกลับเป็น JSON Array โดยมีรูปแบบโครงสร้างข้อมูลดังนี้ (ต้องมีฟิลด์วิเคราะห์ก่อนสรุปผล):
+ตอบกลับเป็น JSON Array โดยมีรูปแบบโครงสร้างข้อมูลดังนี้:
 [
   {
-    "step1_month_analysis": "อธิบายสิ่งที่คุณเห็นเกี่ยวกับการเจาะรูที่ขอบซ้าย/ขวา เช่น พบรอยแหว่งที่ขอบซ้ายตำแหน่งบนสุด (JAN) ทำให้ตัวอักษรหายไปทั้งหมด ดังนั้นคือเดือน ม.ค.",
-    "step2_day_analysis": "อธิบายสิ่งที่คุณเห็นเกี่ยวกับการเจาะรูที่ขอบบน/ล่าง เช่น พบรอยเจาะทับเลข 15 แม้จะเหลือขอบเลข 15 ให้อ่านได้ ถือว่าเป็นวันที่ 15",
-    "date": "15/ม.ค.",
+    "date": "2026-07-21",
     "category": "ค่าทางด่วน",
     "merchant": "ชื่อร้านค้า / ผู้ให้บริการ / ชื่อด่าน (เช่น ด่านดินแดง 1)",
     "receipt_no": "เลขที่ใบเสร็จ หรือ เลขที่เล่ม (เช่น เล่มที่ ฉฐ 11333 เลขที่ 41)",
@@ -342,7 +293,8 @@
 
             for (let i = 0; i < selectedFiles.length; i++) {
                 const file = selectedFiles[i];
-                statusMessage.innerText = `กำลังประมวลผลรูปที่ ${i + 1} จาก ${selectedFiles.length}... (${file.name})`;
+                const imageIndexNumber = i + 1;
+                statusMessage.innerText = `กำลังประมวลผลรูปที่ ${imageIndexNumber} จาก ${selectedFiles.length}... (${file.name})`;
 
                 try {
                     const base64Data = await fileToBase64(file);
@@ -383,7 +335,7 @@
                     if (textResponse) {
                         const parsedData = JSON.parse(textResponse);
                         const items = Array.isArray(parsedData) ? parsedData : [parsedData];
-                        items.forEach(item => addRow(item));
+                        items.forEach(item => addRow(item, imageIndexNumber, file.name));
                     }
 
                 } catch (error) {
@@ -411,7 +363,7 @@
         ];
 
         // Add Row to Table
-        function addRow(data = {}) {
+        function addRow(data = {}, imgIndex = null, fileName = '') {
             const tbody = document.getElementById('receiptTableBody');
             const emptyRow = document.getElementById('emptyRow');
             if (emptyRow) emptyRow.remove();
@@ -425,12 +377,22 @@
                 `<option value="${cat}" ${cat === selectedCat ? 'selected' : ''}>${cat}</option>`
             ).join('');
 
-            const cleanDate = cleanDateStr(data.date || '');
+            // Format date for <input type="date"> (YYYY-MM-DD)
+            let formattedDate = data.date || '';
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(formattedDate)) {
+                formattedDate = new Date().toISOString().slice(0, 10);
+            }
+
+            const imgLabel = imgIndex ? `รูปที่ ${imgIndex}` : 'เพิ่มเอง';
+            const fileSubLabel = fileName ? `<br><span class="text-[10px] text-slate-400 block truncate max-w-[100px]" title="${fileName}">${fileName}</span>` : '';
 
             tr.innerHTML = `
                 <td class="py-2 px-3 text-center text-slate-500 font-medium row-number">${rowCount}</td>
+                <td class="py-2 px-3 text-xs font-semibold text-indigo-600 whitespace-nowrap">
+                    ${imgLabel} ${fileSubLabel}
+                </td>
                 <td class="py-2 px-2">
-                    <input type="text" value="${cleanDate}" placeholder="วัน/เดือน" 
+                    <input type="date" value="${formattedDate}" 
                            class="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 focus:outline-none font-medium">
                 </td>
                 <td class="py-2 px-2">
@@ -487,7 +449,7 @@
                 const tbody = document.getElementById('receiptTableBody');
                 tbody.innerHTML = `
                     <tr id="emptyRow" class="text-slate-400 text-center py-8">
-                        <td colspan="8" class="py-8">ยังไม่มีข้อมูล โปรดอัปโหลดรูปภาพใบเสร็จเพื่อประมวลผล หรือกดเพิ่มรายการ</td>
+                        <td colspan="9" class="py-8">ยังไม่มีข้อมูล โปรดอัปโหลดรูปภาพใบเสร็จเพื่อประมวลผล หรือกดเพิ่มรายการ</td>
                     </tr>
                 `;
             }
@@ -499,7 +461,7 @@
                 const tbody = document.getElementById('receiptTableBody');
                 tbody.innerHTML = `
                     <tr id="emptyRow" class="text-slate-400 text-center py-8">
-                        <td colspan="8" class="py-8">ยังไม่มีข้อมูล โปรดอัปโหลดรูปภาพใบเสร็จเพื่อประมวลผล หรือกดเพิ่มรายการ</td>
+                        <td colspan="9" class="py-8">ยังไม่มีข้อมูล โปรดอัปโหลดรูปภาพใบเสร็จเพื่อประมวลผล หรือกดเพิ่มรายการ</td>
                     </tr>
                 `;
                 calculateTotal();
@@ -537,10 +499,11 @@
             }
 
             let csvContent = "\uFEFF"; // UTF-8 BOM for Thai text in Excel
-            csvContent += "ลำดับ,วันที่ (วัน/เดือน),หมวดหมู่,ร้านค้า/ผู้ให้บริการ,เลขที่ใบเสร็จ,VAT (บาท),จำนวนเงินรวม (บาท)\n";
+            csvContent += "ลำดับ,รูปใบเสร็จ,วันที่ (YYYY-MM-DD),หมวดหมู่,ร้านค้า/ผู้ให้บริการ,เลขที่ใบเสร็จ,VAT (บาท),จำนวนเงินรวม (บาท)\n";
 
             rows.forEach(row => {
                 const rowNum = row.querySelector('.row-number')?.innerText || '';
+                const imgRef = row.querySelectorAll('td')[1]?.innerText.replace(/\n/g, ' ') || '';
                 const inputs = row.querySelectorAll('input');
                 const select = row.querySelector('select');
 
@@ -552,14 +515,14 @@
                     const vat = inputs[3].value || 0;
                     const amount = inputs[4].value || 0;
 
-                    csvContent += `${rowNum},${date},${category},${merchant},${receiptNo},${vat},${amount}\n`;
+                    csvContent += `${rowNum},"${imgRef}",${date},${category},${merchant},${receiptNo},${vat},${amount}\n`;
                 }
             });
 
             // Calculate total lines for CSV
             const vatTotal = document.getElementById('vatTotal').innerText.replace(/,/g, '');
             const grandTotal = document.getElementById('grandTotal').innerText.replace(/,/g, '');
-            csvContent += `,,,,,${vatTotal},${grandTotal}\n`;
+            csvContent += `,,,,,,${vatTotal},${grandTotal}\n`;
 
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
@@ -601,7 +564,7 @@
                 // Header info for each image slot
                 doc.setFontSize(9);
                 doc.setTextColor(100, 116, 139);
-                doc.text(`Attachment Receipt #${i + 1} of ${uploadedImagesBase64.length} - ${imgObj.name}`, margin, slotStartY + 4);
+                doc.text(`Attachment Receipt #${imgObj.index} of ${uploadedImagesBase64.length} - ${imgObj.name}`, margin, slotStartY + 4);
 
                 try {
                     // Load image to get original dimensions and calculate fit ratio
