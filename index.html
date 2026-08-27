@@ -92,14 +92,17 @@
             <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
                 <div>
                     <h2 class="text-lg font-bold text-slate-700 flex items-center gap-2">
-                        <span>📊</span> ตารางสรุปรายการเบิกจ่ายเงิน
+                        <span>📊</span> ตารางสรุปรายการเบิกจ่ายเงิน (เรียงตามวันที่)
                     </h2>
-                    <p class="text-xs text-slate-500">ตรวจสอบ แก้ไขข้อมูล และเลือกหมวดหมู่ได้ในตาราง ระบบจะคำนวณยอดรวมให้อัตโนมัติ</p>
+                    <p class="text-xs text-slate-500">ตรวจสอบ แก้ไขข้อมูล และเลือกหมวดหมู่ได้ในตาราง ระบบจะคำนวณยอดรวมและเรียงวันที่ให้อัตโนมัติ</p>
                 </div>
                 
                 <div class="flex flex-wrap gap-2">
                     <button onclick="addRow()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium py-2 px-4 rounded-lg border border-slate-300 transition-colors flex items-center gap-1">
                         <span>➕</span> เพิ่มรายการ
+                    </button>
+                    <button onclick="sortTableByDate()" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-sm font-medium py-2 px-4 rounded-lg border border-indigo-200 transition-colors flex items-center gap-1">
+                        <span>🔃</span> เรียงวันที่ก่อน-หลัง
                     </button>
                     <button onclick="clearAllRows()" class="bg-red-50 hover:bg-red-100 text-red-600 text-sm font-medium py-2 px-4 rounded-lg border border-red-200 transition-colors">
                         ล้างข้อมูลทั้งหมด
@@ -108,7 +111,7 @@
                         <span>📥</span> ส่งออก CSV
                     </button>
                     <button onclick="exportToPDF()" class="bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold py-2 px-4 rounded-lg shadow transition-colors flex items-center gap-1">
-                        <span>📄</span> ส่งออก PDF (รวมรูป)
+                        <span>📄</span> ส่งออก PDF (2รูป/หน้า)
                     </button>
                 </div>
             </div>
@@ -119,7 +122,7 @@
                     <thead>
                         <tr class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
                             <th class="py-3 px-3 text-center w-12">ลำดับ</th>
-                            <th class="py-3 px-3 w-32">วันที่ / เวลา</th>
+                            <th class="py-3 px-3 w-32">วันที่ (วัน/เดือน)</th>
                             <th class="py-3 px-3 w-36">หมวดหมู่</th>
                             <th class="py-3 px-3">ร้านค้า / ผู้ให้บริการ / ด่าน</th>
                             <th class="py-3 px-3 w-36">เลขที่ใบเสร็จ</th>
@@ -208,6 +211,70 @@
             });
         }
 
+        // Helper to clean date string: Remove year and time, return DD/MM format
+        function cleanDateStr(dateStr) {
+            if (!dateStr || dateStr === '-') return '-';
+            
+            // Remove time portion if exists
+            let clean = dateStr.split(' ')[0].trim();
+            const parts = clean.split('/');
+
+            if (parts.length >= 2) {
+                const day = parts[0].trim().padStart(2, '0');
+                const month = parts[1].trim();
+                return `${day}/${month}`;
+            }
+            return clean;
+        }
+
+        // Helper to parse date string for sorting chronologically (from earliest to latest)
+        function parseDateToValue(dateStr) {
+            if (!dateStr || dateStr === '-') return 9999;
+            
+            let clean = dateStr.split(' ')[0].trim();
+            const parts = clean.split('/');
+            if (parts.length < 2) return 9999;
+
+            const day = parseInt(parts[0], 10) || 0;
+            const monthStr = parts[1].trim().toLowerCase();
+            let month = 0;
+
+            const thaiMonths = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+            const engMonths = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+
+            // Find Thai Month
+            let thaiIndex = thaiMonths.findIndex(m => monthStr.includes(m.replace('.', '')));
+            if (thaiIndex !== -1) {
+                month = thaiIndex + 1;
+            } else {
+                // Find Eng Month
+                let engIndex = engMonths.findIndex(m => monthStr.includes(m));
+                if (engIndex !== -1) {
+                    month = engIndex + 1;
+                } else {
+                    month = parseInt(monthStr, 10) || 0;
+                }
+            }
+
+            return (month * 100) + day;
+        }
+
+        // Sort Table Rows Chronologically (Early -> Late)
+        function sortTableByDate() {
+            const tbody = document.getElementById('receiptTableBody');
+            const rows = Array.from(tbody.querySelectorAll('tr')).filter(r => r.id !== 'emptyRow');
+            if (rows.length === 0) return;
+
+            rows.sort((a, b) => {
+                const dateA = a.querySelectorAll('input')[0]?.value || '';
+                const dateB = b.querySelectorAll('input')[0]?.value || '';
+                return parseDateToValue(dateA) - parseDateToValue(dateB);
+            });
+
+            rows.forEach(row => tbody.appendChild(row));
+            updateRowNumbers();
+        }
+
         // Process Images using Gemini Flash Lite 3.5 API
         async function processImages() {
             const apiKey = document.getElementById('apiKey').value.trim();
@@ -235,18 +302,21 @@
             const promptText = `
 คุณเป็นระบบอ่านและสกัดข้อมูลจากใบเสร็จ/ใบกำกับภาษีทุกรูปแบบ (รวมถึงตั๋ว/บัตรผ่านทางพิเศษทางด่วน, ค่าน้ำมัน, ค่าอาหาร, ซื้อสินค้า, ค่าบริการ)
 
+*** กฎเหล็กสำหรับการระบุวันที่ ***
+- ให้ส่งคืนเฉพาะ "วัน/เดือน" เท่านั้น (เช่น "16/01", "22/03", "01/05", "16/ม.ค.")
+- ห้ามใส่ปี พ.ศ./ค.ศ. และห้ามใส่เวลา (เช่น 18:40) เด็ดขาด
+
 *** คำสั่งสำคัญพิเศษสำหรับตั๋ว/บัตรผ่านทางพิเศษทางด่วน ***
 - บัตรทางด่วนจะระบุวันที่และเดือนโดยใช้ "การเจาะรูวงกลม" (Punched Holes) บนแถบวงกลมรอบขอบใบเสร็จ
-- โปรดสังเกตรอยเจาะรูวงกลม (รูแหว่งทะลุสีขาวหรือเห็นพื้นหลัง) อย่างละเอียดดังนี้:
-  1. วันที่ (หมายเลข 1 ถึง 31): สังเกตรอยเจาะรูว่าตรงกับวงกลมหมายเลขใดรอบขอบกระดาษ (เช่น เจาะที่เลข 22 หมายถึงวันที่ 22, เจาะที่ 28 หมายถึงวันที่ 28)
-  2. เดือน (JAN-DEC / ม.ค.-ธ.ค.): สังเกตรอยเจาะรูบนแถบเดือนรอบขอบกระดาษ (เช่น เจาะตรง JAN/ม.ค. หมายถึงเดือน มกราคม)
-  3. ปี พ.ศ. (เช่น 2568, 2569, 2570): สังเกตรอยเจาะรูตรงช่องตัวเลขปี พ.ศ. มุมบัตร (หากมี)
-- ให้นำ วัน/เดือน/ปี ที่ได้จากการตรวจจับรอยเจาะรู มารวมเป็นฟอร์แมตวันที่ เช่น "22/01/2568" หรือ "28/ม.ค./2568"
+- โปรดสังเกตรอยเจาะรูวงกลมอย่างละเอียด:
+  1. วันที่ (หมายเลข 1 ถึง 31): สังเกตรอยเจาะรูว่าตรงกับวงกลมหมายเลขใดรอบขอบกระดาษ (เช่น เจาะที่ 16 หมายถึง 16)
+  2. เดือน (JAN-DEC / ม.ค.-ธ.ค.): สังเกตรอยเจาะรูบนแถบเดือนรอบขอบกระดาษ (เช่น เจาะตรง JAN/ม.ค. หมายถึง ม.ค.)
+- ให้นำ วัน/เดือน ที่ได้จากการตรวจจับรอยเจาะรู มารวมเป็นฟอร์แมต "วัน/เดือน" เท่านั้น เช่น "16/ม.ค." หรือ "22/03"
 
 ตอบกลับเป็น JSON Array โดยมีรูปแบบโครงสร้างข้อมูลของแต่ละวัตถุดังนี้:
 [
   {
-    "date": "วันที่และเวลา เช่น 22/01/2568 หรือ 27/10/2025 08:23",
+    "date": "16/ม.ค.",
     "category": "ระบุหมวดหมู่ที่เหมาะสมที่สุดเพียง 1 อย่าง จาก: ค่าทางด่วน, น้ำมัน, อาหารและเครื่องดื่ม, ซื้อสินค้า/อุปกรณ์, ค่าบริการ, ค่าเดินทาง/แท็กซี่, อื่นๆ",
     "merchant": "ชื่อร้านค้า ผู้ให้บริการ สถานีบริการน้ำมัน หรือชื่อด่านทางด่วน (เช่น การทางพิเศษแห่งประเทศไทย, BEM, ด่านดินแดง 1)",
     "receipt_no": "เลขที่ใบเสร็จ เลขที่เล่ม (เช่น เล่มที่ ฉฐ 11333 เลขที่ 41)",
@@ -312,6 +382,9 @@
                 }
             }
 
+            // Auto Sort Table by Date from earliest to latest
+            sortTableByDate();
+
             statusAlert.classList.add('hidden');
             processBtn.disabled = false;
         }
@@ -342,11 +415,13 @@
                 `<option value="${cat}" ${cat === selectedCat ? 'selected' : ''}>${cat}</option>`
             ).join('');
 
+            const cleanDate = cleanDateStr(data.date || '');
+
             tr.innerHTML = `
                 <td class="py-2 px-3 text-center text-slate-500 font-medium row-number">${rowCount}</td>
                 <td class="py-2 px-2">
-                    <input type="text" value="${data.date || ''}" placeholder="วว/ดด/ปปปป" 
-                           class="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 focus:outline-none">
+                    <input type="text" value="${cleanDate}" placeholder="วัน/เดือน" 
+                           class="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 focus:outline-none font-medium">
                 </td>
                 <td class="py-2 px-2">
                     <select class="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-indigo-500 focus:outline-none bg-white">
@@ -452,7 +527,7 @@
             }
 
             let csvContent = "\uFEFF"; // UTF-8 BOM for Thai text in Excel
-            csvContent += "ลำดับ,วันที่/เวลา,หมวดหมู่,ร้านค้า/ผู้ให้บริการ,เลขที่ใบเสร็จ,VAT (บาท),จำนวนเงินรวม (บาท)\n";
+            csvContent += "ลำดับ,วันที่ (วัน/เดือน),หมวดหมู่,ร้านค้า/ผู้ให้บริการ,เลขที่ใบเสร็จ,VAT (บาท),จำนวนเงินรวม (บาท)\n";
 
             rows.forEach(row => {
                 const rowNum = row.querySelector('.row-number')?.innerText || '';
@@ -486,7 +561,7 @@
             document.body.removeChild(link);
         }
 
-        // Export ALL Uploaded Images to a Single Combined PDF File
+        // Export Uploaded Images to PDF: 2 Images per A4 Page
         async function exportToPDF() {
             if (uploadedImagesBase64.length === 0) {
                 alert('โปรดอัปโหลดรูปภาพใบเสร็จอย่างน้อย 1 รูป ก่อนกดส่งออก PDF');
@@ -497,38 +572,44 @@
             const doc = new jsPDF('p', 'mm', 'a4');
             const pageWidth = doc.internal.pageSize.getWidth();   // 210 mm
             const pageHeight = doc.internal.pageSize.getHeight(); // 297 mm
-            const margin = 15;
-            const maxW = pageWidth - (margin * 2);
-            const maxH = pageHeight - (margin * 2) - 10;
+            
+            const margin = 10;
+            const maxW = pageWidth - (margin * 2); // 190 mm
+            const maxHPerSlot = (pageHeight - (margin * 3)) / 2; // ~133.5 mm
 
             for (let i = 0; i < uploadedImagesBase64.length; i++) {
-                if (i > 0) {
+                const slotIndex = i % 2; // 0 = Top slot, 1 = Bottom slot
+                
+                // Add new page when moving to an odd index (after filling 2 slots)
+                if (i > 0 && slotIndex === 0) {
                     doc.addPage();
                 }
 
                 const imgObj = uploadedImagesBase64[i];
-                
-                // Add header info on top of each page
-                doc.setFontSize(10);
+                const slotStartY = margin + (slotIndex * (maxHPerSlot + margin));
+
+                // Header info for each image slot
+                doc.setFontSize(9);
                 doc.setTextColor(100, 116, 139);
-                doc.text(`Attachment Receipt #${i + 1} of ${uploadedImagesBase64.length} - ${imgObj.name}`, margin, margin);
+                doc.text(`Attachment Receipt #${i + 1} of ${uploadedImagesBase64.length} - ${imgObj.name}`, margin, slotStartY + 4);
 
                 try {
-                    // Load image into an Image element to get real dimensions and calculate aspect ratio
+                    // Load image to get original dimensions and calculate fit ratio
                     const tempImg = new Image();
                     tempImg.src = imgObj.data;
                     await new Promise((resolve) => { tempImg.onload = resolve; });
 
                     let imgW = tempImg.width;
                     let imgH = tempImg.height;
-                    const ratio = Math.min(maxW / imgW, maxH / imgH);
+                    const availableH = maxHPerSlot - 8;
+                    const ratio = Math.min(maxW / imgW, availableH / imgH);
                     
                     const renderW = imgW * ratio;
                     const renderH = imgH * ratio;
 
-                    // Center image on the page
+                    // Center image horizontally and vertically in its slot
                     const x = (pageWidth - renderW) / 2;
-                    const y = margin + 8 + ((maxH - renderH) / 2);
+                    const y = slotStartY + 7 + ((availableH - renderH) / 2);
 
                     const format = imgObj.type.includes('png') ? 'PNG' : 'JPEG';
                     doc.addImage(imgObj.data, format, x, y, renderW, renderH, undefined, 'FAST');
