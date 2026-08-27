@@ -442,8 +442,9 @@
                 return;
             }
 
-            let csvContent = "\uFEFF"; // UTF-8 BOM for Thai text in Excel
-            csvContent += "ลำดับ,วันที่/เวลา,หมวดหมู่,ร้านค้า/ผู้ให้บริการ,เลขที่ใบเสร็จ,VAT (บาท),จำนวนเงินรวม (บาท)\n";
+            let csvContent = "﻿"; // UTF-8 BOM for Thai text in Excel
+            csvContent += "ลำดับ,วันที่/เวลา,หมวดหมู่,ร้านค้า/ผู้ให้บริการ,เลขที่ใบเสร็จ,VAT (บาท),จำนวนเงินรวม (บาท)
+";
 
             rows.forEach(row => {
                 const rowNum = row.querySelector('.row-number')?.innerText || '';
@@ -458,14 +459,16 @@
                     const vat = inputs[3].value || 0;
                     const amount = inputs[4].value || 0;
 
-                    csvContent += `${rowNum},${date},${category},${merchant},${receiptNo},${vat},${amount}\n`;
+                    csvContent += `${rowNum},${date},${category},${merchant},${receiptNo},${vat},${amount}
+`;
                 }
             });
 
             // Calculate total lines for CSV
             const vatTotal = document.getElementById('vatTotal').innerText.replace(/,/g, '');
             const grandTotal = document.getElementById('grandTotal').innerText.replace(/,/g, '');
-            csvContent += `,,,,,${vatTotal},${grandTotal}\n`;
+            csvContent += `,,,,,${vatTotal},${grandTotal}
+`;
 
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
@@ -477,93 +480,58 @@
             document.body.removeChild(link);
         }
 
-        // Export Data & Combined Images to PDF via jsPDF
+        // Export ALL Uploaded Images to a Single Combined PDF File
         async function exportToPDF() {
-            const rows = document.querySelectorAll('#receiptTableBody tr');
-            if (rows.length === 0 || document.getElementById('emptyRow')) {
-                alert('ไม่มีข้อมูลสำหรับส่งออก PDF');
+            if (uploadedImagesBase64.length === 0) {
+                alert('โปรดอัปโหลดรูปภาพใบเสร็จอย่างน้อย 1 รูป ก่อนกดส่งออก PDF');
                 return;
             }
 
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF('p', 'mm', 'a4');
+            const pageWidth = doc.internal.pageSize.getWidth();   // 210 mm
+            const pageHeight = doc.internal.pageSize.getHeight(); // 297 mm
+            const margin = 15;
+            const maxW = pageWidth - (margin * 2);
+            const maxH = pageHeight - (margin * 2) - 10;
 
-            // Header Summary Section
-            doc.setFontSize(16);
-            doc.text("Receipt Expense Claim Report", 14, 20);
-            doc.setFontSize(10);
-            doc.text(`Generated Date: ${new Date().toLocaleDateString()}`, 14, 26);
-
-            // Table Header
-            let y = 35;
-            doc.setFillColor(79, 70, 229); // Indigo
-            doc.rect(14, y, 182, 8, 'F');
-            doc.setTextColor(255, 255, 255);
-            doc.setFontSize(9);
-            doc.text("#", 16, y + 5.5);
-            doc.text("Date", 24, y + 5.5);
-            doc.text("Category", 50, y + 5.5);
-            doc.text("Merchant / Details", 85, y + 5.5);
-            doc.text("Receipt No.", 135, y + 5.5);
-            doc.text("Amount", 175, y + 5.5);
-
-            y += 8;
-            doc.setTextColor(0, 0, 0);
-
-            // Table Rows
-            rows.forEach((row) => {
-                const rowNum = row.querySelector('.row-number')?.innerText || '';
-                const inputs = row.querySelectorAll('input');
-                const select = row.querySelector('select');
-
-                if (inputs.length >= 4 && select) {
-                    const date = inputs[0].value.slice(0, 15);
-                    const category = select.value.slice(0, 15);
-                    const merchant = inputs[1].value.slice(0, 24);
-                    const receiptNo = inputs[2].value.slice(0, 15);
-                    const amount = parseFloat(inputs[4].value || 0).toFixed(2);
-
-                    // Alternate row shading
-                    if (parseInt(rowNum) % 2 === 0) {
-                        doc.setFillColor(248, 250, 252);
-                        doc.rect(14, y, 182, 7, 'F');
-                    }
-
-                    doc.text(rowNum, 16, y + 5);
-                    doc.text(date, 24, y + 5);
-                    doc.text(category, 50, y + 5);
-                    doc.text(merchant, 85, y + 5);
-                    doc.text(receiptNo, 135, y + 5);
-                    doc.text(amount, 192, y + 5, { align: 'right' });
-                    y += 7;
-                }
-            });
-
-            // Grand Total Line
-            doc.setLineWidth(0.5);
-            doc.line(14, y + 2, 196, y + 2);
-            doc.setFontSize(10);
-            const grandTotal = document.getElementById('grandTotal').innerText;
-            doc.text(`Total Amount: THB ${grandTotal}`, 192, y + 9, { align: 'right' });
-
-            // Attach Receipt Images (1 Image per page for clarity)
-            if (uploadedImagesBase64.length > 0) {
-                for (let i = 0; i < uploadedImagesBase64.length; i++) {
-                    const imgObj = uploadedImagesBase64[i];
+            for (let i = 0; i < uploadedImagesBase64.length; i++) {
+                if (i > 0) {
                     doc.addPage();
-                    doc.setFontSize(12);
-                    doc.text(`Attachment Receipt #${i + 1}: ${imgObj.name}`, 14, 15);
+                }
 
-                    try {
-                        // Fit image into A4 dimensions (max width 180mm, max height 240mm)
-                        doc.addImage(imgObj.data, 'JPEG', 15, 25, 180, 240, undefined, 'FAST');
-                    } catch (e) {
-                        console.error('Error rendering image to PDF:', e);
-                    }
+                const imgObj = uploadedImagesBase64[i];
+                
+                // Add header info on top of each page
+                doc.setFontSize(10);
+                doc.setTextColor(100, 116, 139);
+                doc.text(`Attachment Receipt #${i + 1} of ${uploadedImagesBase64.length} - ${imgObj.name}`, margin, margin);
+
+                try {
+                    // Load image into an Image element to get real dimensions and calculate aspect ratio
+                    const tempImg = new Image();
+                    tempImg.src = imgObj.data;
+                    await new Promise((resolve) => { tempImg.onload = resolve; });
+
+                    let imgW = tempImg.width;
+                    let imgH = tempImg.height;
+                    const ratio = Math.min(maxW / imgW, maxH / imgH);
+                    
+                    const renderW = imgW * ratio;
+                    const renderH = imgH * ratio;
+
+                    // Center image on the page
+                    const x = (pageWidth - renderW) / 2;
+                    const y = margin + 8 + ((maxH - renderH) / 2);
+
+                    const format = imgObj.type.includes('png') ? 'PNG' : 'JPEG';
+                    doc.addImage(imgObj.data, format, x, y, renderW, renderH, undefined, 'FAST');
+                } catch (e) {
+                    console.error('Error rendering image to PDF:', e);
                 }
             }
 
-            doc.save(`สรุปใบเสร็จเบิกจ่ายเงิน_${new Date().toISOString().slice(0, 10)}.pdf`);
+            doc.save(`รวมรูปภาพใบเสร็จ_${new Date().toISOString().slice(0, 10)}.pdf`);
         }
     </script>
 </body>
