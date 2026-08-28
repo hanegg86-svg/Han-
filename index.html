@@ -114,25 +114,28 @@
             <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
                 <div>
                     <h2 class="text-lg font-bold text-slate-700 flex items-center gap-2">
-                        <span>📊</span> ตารางสรุปรายการเบิกจ่ายเงิน (เรียงตามวันที่)
+                        <span>📊</span> ตารางสรุปรายการเบิกจ่ายเงิน
                     </h2>
-                    <p class="text-xs text-slate-500">ตรวจสอบ แก้ไขข้อมูล เลือกวันที่ด้วยปฏิทิน และเลือกหมวดหมู่ได้ในตาราง ระบบจะคำนวณยอดรวมและเรียงวันที่ให้อัตโนมัติ</p>
+                    <p class="text-xs text-slate-500">คลิกที่หัวตารางเพื่อเรียงลำดับข้อมูล (เรียงจากรูปที่ 1 เป็นค่าเริ่มต้น) หรือเลือกแก้ไขข้อมูลในตารางได้โดยตรง</p>
                 </div>
                 
                 <div class="flex flex-wrap gap-2">
-                    <button onclick="addRow()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium py-2 px-4 rounded-lg border border-slate-300 transition-colors flex items-center gap-1">
+                    <button onclick="addRow()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium py-2 px-3 rounded-lg border border-slate-300 transition-colors flex items-center gap-1">
                         <span>➕</span> เพิ่มรายการ
                     </button>
-                    <button onclick="sortTableByDate()" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-sm font-medium py-2 px-4 rounded-lg border border-indigo-200 transition-colors flex items-center gap-1">
-                        <span>🔃</span> เรียงวันที่ก่อน-หลัง
+                    <button onclick="sortTableByColumn(1)" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-sm font-medium py-2 px-3 rounded-lg border border-indigo-200 transition-colors flex items-center gap-1">
+                        <span>🔃</span> เรียงตามรูปที่ 1..N
                     </button>
-                    <button onclick="clearAllRows()" class="bg-red-50 hover:bg-red-100 text-red-600 text-sm font-medium py-2 px-4 rounded-lg border border-red-200 transition-colors">
+                    <button onclick="clearAllRows()" class="bg-red-50 hover:bg-red-100 text-red-600 text-sm font-medium py-2 px-3 rounded-lg border border-red-200 transition-colors">
                         ล้างตารางนี้
                     </button>
-                    <button onclick="exportToCSV()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold py-2 px-4 rounded-lg shadow transition-colors flex items-center gap-1">
+                    <button onclick="exportToJSON()" class="bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold py-2 px-3 rounded-lg shadow transition-colors flex items-center gap-1">
+                        <span>💾</span> สำรอง JSON
+                    </button>
+                    <button onclick="exportToCSV()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold py-2 px-3 rounded-lg shadow transition-colors flex items-center gap-1">
                         <span>📥</span> ส่งออก CSV
                     </button>
-                    <button onclick="exportToPDF()" class="bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold py-2 px-4 rounded-lg shadow transition-colors flex items-center gap-1">
+                    <button onclick="exportToPDF()" class="bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold py-2 px-3 rounded-lg shadow transition-colors flex items-center gap-1">
                         <span>📄</span> ส่งออก PDF (2รูป/หน้า)
                     </button>
                 </div>
@@ -144,13 +147,27 @@
                     <thead>
                         <tr class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
                             <th class="py-3 px-3 text-center w-12">ลำดับ</th>
-                            <th class="py-3 px-3 w-32">รูปใบเสร็จ</th>
-                            <th class="py-3 px-3 w-36">วันที่ (ปฏิทิน)</th>
-                            <th class="py-3 px-3 w-36">หมวดหมู่</th>
-                            <th class="py-3 px-3">ร้านค้า / ผู้ให้บริการ / ด่าน</th>
-                            <th class="py-3 px-3 w-36">เลขที่ใบเสร็จ</th>
-                            <th class="py-3 px-3 w-28 text-right">VAT (บาท)</th>
-                            <th class="py-3 px-3 w-32 text-right">จำนวนเงินรวม</th>
+                            <th data-sort="1" onclick="sortTableByColumn(1)" class="py-3 px-3 w-32 cursor-pointer hover:bg-slate-200 transition-colors select-none">
+                                รูปใบเสร็จ <span class="sort-icon text-xs text-slate-400">▲</span>
+                            </th>
+                            <th data-sort="2" onclick="sortTableByColumn(2)" class="py-3 px-3 w-36 cursor-pointer hover:bg-slate-200 transition-colors select-none">
+                                วันที่ (ปฏิทิน) <span class="sort-icon text-xs text-slate-400">↕</span>
+                            </th>
+                            <th data-sort="3" onclick="sortTableByColumn(3)" class="py-3 px-3 w-36 cursor-pointer hover:bg-slate-200 transition-colors select-none">
+                                หมวดหมู่ <span class="sort-icon text-xs text-slate-400">↕</span>
+                            </th>
+                            <th data-sort="4" onclick="sortTableByColumn(4)" class="py-3 px-3 cursor-pointer hover:bg-slate-200 transition-colors select-none">
+                                ร้านค้า / ผู้ให้บริการ / ด่าน <span class="sort-icon text-xs text-slate-400">↕</span>
+                            </th>
+                            <th data-sort="5" onclick="sortTableByColumn(5)" class="py-3 px-3 w-36 cursor-pointer hover:bg-slate-200 transition-colors select-none">
+                                เลขที่ใบเสร็จ <span class="sort-icon text-xs text-slate-400">↕</span>
+                            </th>
+                            <th data-sort="6" onclick="sortTableByColumn(6)" class="py-3 px-3 w-28 text-right cursor-pointer hover:bg-slate-200 transition-colors select-none">
+                                VAT (บาท) <span class="sort-icon text-xs text-slate-400">↕</span>
+                            </th>
+                            <th data-sort="7" onclick="sortTableByColumn(7)" class="py-3 px-3 w-32 text-right cursor-pointer hover:bg-slate-200 transition-colors select-none">
+                                จำนวนเงินรวม <span class="sort-icon text-xs text-slate-400">↕</span>
+                            </th>
                             <th class="py-3 px-3 text-center w-16">ลบ</th>
                         </tr>
                     </thead>
@@ -177,6 +194,10 @@
         // Store selected files & their Base64 data for PDF export
         let selectedFiles = [];
         let uploadedImagesBase64 = [];
+
+        // Sorting tracking state
+        let currentSortCol = 1; // Default: Sort by Image Column
+        let currentSortAsc = true; // Default: Ascending (รูปที่ 1 -> รูปที่ N)
 
         // Save & Restore API Key and Load Saved Months from localStorage
         document.addEventListener('DOMContentLoaded', () => {
@@ -255,16 +276,14 @@
             // Save each month group to LocalStorage
             Object.keys(monthlyGroup).forEach(monthKey => {
                 const existingDataStr = localStorage.getItem(`receipt_monthly_${monthKey}`);
-                let finalData = monthlyGroup[monthKey];
 
                 if (existingDataStr) {
-                    // Ask user if they want to merge or overwrite
                     if (!confirm(`เดือน ${monthKey} มีข้อมูลบันทึกอยู่แล้ว ต้องการเขียนทับด้วยข้อมูลปัจจุบันใช่หรือไม่? (กด Cancel เพื่อยกเลิก)`)) {
                         return;
                     }
                 }
 
-                localStorage.setItem(`receipt_monthly_${monthKey}`, JSON.stringify(finalData));
+                localStorage.setItem(`receipt_monthly_${monthKey}`, JSON.stringify(monthlyGroup[monthKey]));
             });
 
             refreshSavedMonthsDropdown();
@@ -293,7 +312,7 @@
                 addRow(item, null, '', item.imgRef);
             });
 
-            sortTableByDate();
+            sortByImg(true);
             alert(`โหลดข้อมูลเดือน ${monthKey} จำนวน ${items.length} รายการ เรียบร้อยแล้ว`);
         }
 
@@ -360,20 +379,102 @@
             });
         }
 
-        // Sort Table Rows Chronologically (Early -> Late)
-        function sortTableByDate() {
+        // Sort by Image Index Number (Default: รูปที่ 1 -> รูปที่ N)
+        function sortByImg(asc = true) {
             const tbody = document.getElementById('receiptTableBody');
             const rows = Array.from(tbody.querySelectorAll('tr')).filter(r => r.id !== 'emptyRow');
             if (rows.length === 0) return;
 
             rows.sort((a, b) => {
-                const dateA = a.querySelectorAll('input')[0]?.value || '9999-99-99';
-                const dateB = b.querySelectorAll('input')[0]?.value || '9999-99-99';
-                return dateA.localeCompare(dateB);
+                const textA = a.querySelectorAll('td')[1]?.innerText || '';
+                const textB = b.querySelectorAll('td')[1]?.innerText || '';
+
+                const matchA = textA.match(/รูปที่\s*(\d+)/);
+                const matchB = textB.match(/รูปที่\s*(\d+)/);
+
+                const numA = matchA ? parseInt(matchA[1], 10) : 999999;
+                const numB = matchB ? parseInt(matchB[1], 10) : 999999;
+
+                if (numA !== numB) {
+                    return asc ? numA - numB : numB - numA;
+                }
+                return asc ? textA.localeCompare(textB, 'th') : textB.localeCompare(textA, 'th');
             });
 
             rows.forEach(row => tbody.appendChild(row));
             updateRowNumbers();
+            updateSortHeaderIcons(1, asc);
+            currentSortCol = 1;
+            currentSortAsc = asc;
+        }
+
+        // Generic Table Sorting Function for Header Click
+        function sortTableByColumn(colIndex) {
+            const tbody = document.getElementById('receiptTableBody');
+            const rows = Array.from(tbody.querySelectorAll('tr')).filter(r => r.id !== 'emptyRow');
+            if (rows.length === 0) return;
+
+            if (currentSortCol === colIndex) {
+                currentSortAsc = !currentSortAsc;
+            } else {
+                currentSortCol = colIndex;
+                currentSortAsc = true;
+            }
+
+            if (colIndex === 1) {
+                sortByImg(currentSortAsc);
+                return;
+            }
+
+            rows.sort((a, b) => {
+                let valA = getCellValue(a, colIndex);
+                let valB = getCellValue(b, colIndex);
+
+                // Numeric comparison for VAT and Amount
+                if (colIndex === 6 || colIndex === 7) {
+                    const numA = parseFloat(valA) || 0;
+                    const numB = parseFloat(valB) || 0;
+                    return currentSortAsc ? numA - numB : numB - numA;
+                }
+
+                // Standard Thai string comparison
+                return currentSortAsc 
+                    ? valA.localeCompare(valB, 'th', { numeric: true }) 
+                    : valB.localeCompare(valA, 'th', { numeric: true });
+            });
+
+            rows.forEach(row => tbody.appendChild(row));
+            updateRowNumbers();
+            updateSortHeaderIcons(colIndex, currentSortAsc);
+        }
+
+        // Helper to extract value from row cell
+        function getCellValue(row, colIndex) {
+            const td = row.querySelectorAll('td')[colIndex];
+            if (!td) return '';
+            const input = td.querySelector('input');
+            if (input) return input.value || '';
+            const select = td.querySelector('select');
+            if (select) return select.value || '';
+            return td.innerText.trim();
+        }
+
+        // Update Sorting Icons on Table Headers
+        function updateSortHeaderIcons(colIndex, asc) {
+            const headers = document.querySelectorAll('th[data-sort]');
+            headers.forEach(th => {
+                const index = parseInt(th.getAttribute('data-sort'));
+                const iconSpan = th.querySelector('.sort-icon');
+                if (iconSpan) {
+                    if (index === colIndex) {
+                        iconSpan.innerText = asc ? ' ▲' : ' ▼';
+                        iconSpan.className = 'sort-icon text-xs text-indigo-600 font-bold';
+                    } else {
+                        iconSpan.innerText = ' ↕';
+                        iconSpan.className = 'sort-icon text-xs text-slate-400';
+                    }
+                }
+            });
         }
 
         // Process Images using Gemini Flash Lite 3.5 API
@@ -488,8 +589,8 @@
                 }
             }
 
-            // Auto Sort Table by Date from earliest to latest
-            sortTableByDate();
+            // Default Sort: Sort by Image Number (รูปที่ 1 -> รูปที่ N)
+            sortByImg(true);
 
             statusAlert.classList.add('hidden');
             processBtn.disabled = false;
@@ -640,6 +741,45 @@
             document.getElementById('grandTotal').innerText = totalAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
 
+        // Export Current Table Data to Backup JSON File
+        function exportToJSON() {
+            const tbody = document.getElementById('receiptTableBody');
+            const rows = Array.from(tbody.querySelectorAll('tr')).filter(r => r.id !== 'emptyRow');
+
+            if (rows.length === 0) {
+                alert('ไม่มีข้อมูลในตารางสำหรับสำรองข้อมูล');
+                return;
+            }
+
+            const data = rows.map((row, index) => {
+                const imgRef = row.querySelectorAll('td')[1]?.innerText.replace(/\n/g, ' ').trim() || 'เพิ่มเอง';
+                const inputs = row.querySelectorAll('input');
+                const select = row.querySelector('select');
+
+                return {
+                    id: index + 1,
+                    imgRef: imgRef,
+                    date: inputs[0]?.value || '',
+                    category: select?.value || '',
+                    merchant: inputs[1]?.value || '',
+                    receipt_no: inputs[2]?.value || '',
+                    vat: parseFloat(inputs[3]?.value) || 0,
+                    amount: parseFloat(inputs[4]?.value) || 0
+                };
+            });
+
+            const jsonString = JSON.stringify(data, null, 2);
+            const blob = new Blob([jsonString], { type: 'application/json;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.setAttribute('href', url);
+            link.setAttribute('download', `receipts_backup_${new Date().toISOString().slice(0, 10)}.json`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
         // Export Data to CSV (with Thai Language UTF-8 BOM)
         function exportToCSV() {
             const rows = document.querySelectorAll('#receiptTableBody tr');
@@ -682,6 +822,7 @@
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
+            URL.revokeObjectURL(url);
         }
 
         // Export Uploaded Images to PDF: 2 Images per A4 Page
