@@ -21,6 +21,9 @@
     <!-- jsPDF CDN for Client-side PDF Generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
+    <!-- SheetJS (xlsx) CDN for Client-side Excel Export -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
     <style>
         body { font-family: 'Sarabun', sans-serif; }
     </style>
@@ -36,17 +39,10 @@
                 </h1>
                 <p class="text-indigo-100 text-sm mt-1">สแกนใบเสร็จ (ค่าทางด่วน, น้ำมัน, อาหาร, ซื้อสินค้า, ค่าบริการ) อัตโนมัติด้วย AI (Gemini Flash Lite 3.5)</p>
             </div>
-            <div class="flex flex-col gap-2 w-full md:w-auto">
-                <div class="flex items-center bg-indigo-800 px-3 py-1.5 rounded-lg border border-indigo-600">
-                    <label for="apiKey" class="text-xs font-semibold text-indigo-200 mr-2 whitespace-nowrap">Gemini API Key:</label>
-                    <input type="password" id="apiKey" placeholder="ใส่ Gemini API Key" 
-                           class="bg-indigo-950 text-white text-xs px-2.5 py-1 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400 w-full md:w-56">
-                </div>
-                <div class="flex items-center bg-indigo-800 px-3 py-1.5 rounded-lg border border-indigo-600">
-                    <label for="gasUrl" class="text-xs font-semibold text-emerald-300 mr-2 whitespace-nowrap">Google Sheet URL:</label>
-                    <input type="text" id="gasUrl" placeholder="วาง Apps Script Web App URL ที่นี่" 
-                           class="bg-indigo-950 text-white text-xs px-2.5 py-1 rounded focus:outline-none focus:ring-1 focus:ring-emerald-400 w-full md:w-56">
-                </div>
+            <div class="flex items-center bg-indigo-800 px-4 py-2 rounded-lg border border-indigo-600 w-full md:w-auto">
+                <label for="apiKey" class="text-xs font-semibold text-indigo-200 mr-2 whitespace-nowrap">API Key:</label>
+                <input type="password" id="apiKey" placeholder="ใส่ Gemini API Key ที่นี่" 
+                       class="bg-indigo-950 text-white text-sm px-3 py-1.5 rounded focus:outline-none focus:ring-2 focus:ring-indigo-400 w-full md:w-64">
             </div>
         </div>
     </header>
@@ -136,8 +132,8 @@
                     <button onclick="clearAllRows()" class="bg-red-50 hover:bg-red-100 text-red-600 text-sm font-medium py-2 px-3 rounded-lg border border-red-200 transition-colors">
                         ล้างตารางนี้
                     </button>
-                    <button onclick="exportToGoogleSheets()" class="bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-semibold py-2 px-3 rounded-lg shadow transition-colors flex items-center gap-1">
-                        <span>🟢</span> ส่งออก Google Sheets
+                    <button onclick="exportToExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold py-2 px-3 rounded-lg shadow transition-colors flex items-center gap-1">
+                        <span>📊</span> ส่งออก Excel (.xlsx)
                     </button>
                     <button onclick="exportToJSON()" class="bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold py-2 px-3 rounded-lg shadow transition-colors flex items-center gap-1">
                         <span>💾</span> สำรอง JSON
@@ -209,25 +205,17 @@
         let currentSortCol = 1; // Default: Sort by Image Column
         let currentSortAsc = true; // Default: Ascending (รูปที่ 1 -> รูปที่ N)
 
-        // Save & Restore API Key, GAS URL and Load Saved Months from localStorage
+        // Save & Restore API Key and Load Saved Months from localStorage
         document.addEventListener('DOMContentLoaded', () => {
             const savedKey = localStorage.getItem('gemini_api_key');
             if (savedKey) {
                 document.getElementById('apiKey').value = savedKey;
-            }
-            const savedGasUrl = localStorage.getItem('gas_web_app_url');
-            if (savedGasUrl) {
-                document.getElementById('gasUrl').value = savedGasUrl;
             }
             refreshSavedMonthsDropdown();
         });
 
         document.getElementById('apiKey').addEventListener('input', (e) => {
             localStorage.setItem('gemini_api_key', e.target.value.trim());
-        });
-
-        document.getElementById('gasUrl').addEventListener('input', (e) => {
-            localStorage.setItem('gas_web_app_url', e.target.value.trim());
         });
 
         // Refresh Monthly Dropdown List
@@ -759,59 +747,52 @@
             document.getElementById('grandTotal').innerText = totalAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
 
-        // Export Data Direct to Google Sheets via GAS Endpoint
-        async function exportToGoogleSheets() {
-            const gasUrl = document.getElementById('gasUrl').value.trim();
-            if (!gasUrl) {
-                alert('โปรดระบุ Google Sheet Apps Script Web App URL ด้านบนก่อนส่งออก');
-                return;
-            }
-
+        // Export Data to Excel (.xlsx) file (Compatible with Google Sheets & MS Excel)
+        function exportToExcel() {
             const tbody = document.getElementById('receiptTableBody');
             const rows = Array.from(tbody.querySelectorAll('tr')).filter(r => r.id !== 'emptyRow');
 
             if (rows.length === 0) {
-                alert('ไม่มีข้อมูลในตารางสำหรับส่งออก');
+                alert('ไม่มีข้อมูลในตารางสำหรับส่งออก Excel');
                 return;
             }
 
-            const data = rows.map((row, index) => {
-                const imgRef = row.querySelectorAll('td')[1]?.innerText.replace(/\n/g, ' ').trim() || 'เพิ่มเอง';
+            const excelData = [];
+            // Table Headers
+            excelData.push(["ลำดับ", "รูปใบเสร็จ", "วันที่ (YYYY-MM-DD)", "หมวดหมู่", "ร้านค้า/ผู้ให้บริการ", "เลขที่ใบเสร็จ", "VAT (บาท)", "จำนวนเงินรวม (บาท)"]);
+
+            // Table Body
+            rows.forEach(row => {
+                const rowNum = parseInt(row.querySelector('.row-number')?.innerText || '0', 10);
+                const imgRef = row.querySelectorAll('td')[1]?.innerText.replace(/\n/g, ' ').trim() || '';
                 const inputs = row.querySelectorAll('input');
                 const select = row.querySelector('select');
 
-                return {
-                    id: index + 1,
-                    imgRef: imgRef,
-                    date: inputs[0]?.value || '',
-                    category: select?.value || '',
-                    merchant: inputs[1]?.value || '',
-                    receipt_no: inputs[2]?.value || '',
-                    vat: parseFloat(inputs[3]?.value) || 0,
-                    amount: parseFloat(inputs[4]?.value) || 0
-                };
+                if (inputs.length >= 5 && select) {
+                    excelData.push([
+                        rowNum,
+                        imgRef,
+                        inputs[0].value || '',
+                        select.value || '',
+                        inputs[1].value || '',
+                        inputs[2].value || '',
+                        parseFloat(inputs[3].value) || 0,
+                        parseFloat(inputs[4].value) || 0
+                    ]);
+                }
             });
 
-            const statusAlert = document.getElementById('statusAlert');
-            const statusMessage = document.getElementById('statusMessage');
-            statusAlert.classList.remove('hidden');
-            statusMessage.innerText = 'กำลังส่งข้อมูลไปยัง Google Sheets...';
+            // Table Footer Totals
+            const vatTotal = parseFloat(document.getElementById('vatTotal').innerText.replace(/,/g, '')) || 0;
+            const grandTotal = parseFloat(document.getElementById('grandTotal').innerText.replace(/,/g, '')) || 0;
+            excelData.push(["", "", "", "", "", "ยอดรวมทั้งหมด", vatTotal, grandTotal]);
 
-            try {
-                await fetch(gasUrl, {
-                    method: 'POST',
-                    mode: 'no-cors',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
+            // Create Sheet & Download .xlsx
+            const worksheet = XLSX.utils.aoa_to_sheet(excelData);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "สรุปใบเสร็จ");
 
-                statusAlert.classList.add('hidden');
-                alert('ส่งข้อมูลเข้า Google Sheets เรียบร้อยแล้ว!');
-            } catch (error) {
-                console.error('Error exporting to Google Sheets:', error);
-                statusAlert.classList.add('hidden');
-                alert(`เกิดข้อผิดพลาดในการส่งข้อมูล: ${error.message}`);
-            }
+            XLSX.writeFile(workbook, `สรุปใบเสร็จเบิกจ่ายเงิน_${new Date().toISOString().slice(0, 10)}.xlsx`);
         }
 
         // Export Current Table Data to Backup JSON File
