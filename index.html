@@ -350,8 +350,8 @@
             }
         }
 
-        // Handle Image Selection & Preview
-        function handleFileSelect(event) {
+        // Handle Image Selection & Preview (Preserves exact upload sequence using Promise.all)
+        async function handleFileSelect(event) {
             const files = Array.from(event.target.files);
             if (files.length === 0) return;
 
@@ -363,25 +363,32 @@
             previewContainer.innerHTML = '';
             previewContainer.classList.remove('hidden');
 
-            selectedFiles.forEach((file, index) => {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    uploadedImagesBase64.push({
-                        index: index + 1,
-                        name: file.name,
-                        type: file.type || 'image/jpeg',
-                        data: e.target.result
-                    });
+            const loadPromises = selectedFiles.map((file, index) => {
+                return new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        resolve({
+                            index: index + 1,
+                            name: file.name,
+                            type: file.type || 'image/jpeg',
+                            data: e.target.result
+                        });
+                    };
+                    reader.readAsDataURL(file);
+                });
+            });
 
-                    const div = document.createElement('div');
-                    div.className = 'relative w-20 h-24 border border-slate-200 rounded-lg overflow-hidden bg-slate-100 shadow-sm flex flex-col items-center justify-between p-1';
-                    div.innerHTML = `
-                        <img src="${e.target.result}" class="w-full h-16 object-cover rounded">
-                        <span class="text-[10px] font-bold text-indigo-700">รูปที่ ${index + 1}</span>
-                    `;
-                    previewContainer.appendChild(div);
-                };
-                reader.readAsDataURL(file);
+            uploadedImagesBase64 = await Promise.all(loadPromises);
+
+            // Render Preview Cards in exact sequence
+            uploadedImagesBase64.forEach(imgObj => {
+                const div = document.createElement('div');
+                div.className = 'relative w-20 h-24 border border-slate-200 rounded-lg overflow-hidden bg-slate-100 shadow-sm flex flex-col items-center justify-between p-1';
+                div.innerHTML = `
+                    <img src="${imgObj.data}" class="w-full h-16 object-cover rounded">
+                    <span class="text-[10px] font-bold text-indigo-700">รูปที่ ${imgObj.index}</span>
+                `;
+                previewContainer.appendChild(div);
             });
         }
 
@@ -991,12 +998,15 @@
             URL.revokeObjectURL(url);
         }
 
-        // Export Uploaded Images to PDF: 2 Images per A4 Page
+        // Export Uploaded Images to PDF: 2 Images per A4 Page (Strict Ascending Upload Sequence 1..N)
         async function exportToPDF() {
             if (uploadedImagesBase64.length === 0) {
                 alert('โปรดอัปโหลดรูปภาพใบเสร็จอย่างน้อย 1 รูป ก่อนกดส่งออก PDF');
                 return;
             }
+
+            // Ensure strict sorting by index 1 -> N before PDF generation
+            const sortedImages = [...uploadedImagesBase64].sort((a, b) => a.index - b.index);
 
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF('p', 'mm', 'a4');
@@ -1007,21 +1017,21 @@
             const maxW = pageWidth - (margin * 2); // 190 mm
             const maxHPerSlot = (pageHeight - (margin * 3)) / 2; // ~133.5 mm
 
-            for (let i = 0; i < uploadedImagesBase64.length; i++) {
+            for (let i = 0; i < sortedImages.length; i++) {
                 const slotIndex = i % 2; // 0 = Top slot, 1 = Bottom slot
                 
-                // Add new page when moving to an odd index (after filling 2 slots)
+                // Add new page when moving to an even index > 0 (after filling 2 slots)
                 if (i > 0 && slotIndex === 0) {
                     doc.addPage();
                 }
 
-                const imgObj = uploadedImagesBase64[i];
+                const imgObj = sortedImages[i];
                 const slotStartY = margin + (slotIndex * (maxHPerSlot + margin));
 
                 // Header info for each image slot
                 doc.setFontSize(9);
                 doc.setTextColor(100, 116, 139);
-                doc.text(`Attachment Receipt #${imgObj.index} of ${uploadedImagesBase64.length} - ${imgObj.name}`, margin, slotStartY + 4);
+                doc.text(`Attachment Receipt #${imgObj.index} of ${sortedImages.length} - ${imgObj.name}`, margin, slotStartY + 4);
 
                 try {
                     // Load image to get original dimensions and calculate fit ratio
