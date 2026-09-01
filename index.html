@@ -21,9 +21,6 @@
     <!-- jsPDF CDN for Client-side PDF Generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
-    <!-- SheetJS (xlsx) CDN for Client-side Excel Export -->
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-
     <style>
         body { font-family: 'Sarabun', sans-serif; }
     </style>
@@ -131,9 +128,6 @@
                     </button>
                     <button onclick="clearAllRows()" class="bg-red-50 hover:bg-red-100 text-red-600 text-sm font-medium py-2 px-3 rounded-lg border border-red-200 transition-colors">
                         ล้างตารางนี้
-                    </button>
-                    <button onclick="exportToExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold py-2 px-3 rounded-lg shadow transition-colors flex items-center gap-1">
-                        <span>📊</span> ส่งออก Excel (.xlsx)
                     </button>
                     <button onclick="exportToJSON()" class="bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold py-2 px-3 rounded-lg shadow transition-colors flex items-center gap-1">
                         <span>💾</span> สำรอง JSON
@@ -823,77 +817,6 @@
                 `;
                 container.appendChild(badge);
             });
-        }
-
-        // Export Data to Excel (.xlsx) file (Compatible with Google Sheets & MS Excel)
-        function exportToExcel() {
-            const tbody = document.getElementById('receiptTableBody');
-            const rows = Array.from(tbody.querySelectorAll('tr')).filter(r => r.id !== 'emptyRow');
-
-            if (rows.length === 0) {
-                alert('ไม่มีข้อมูลในตารางสำหรับส่งออก Excel');
-                return;
-            }
-
-            const excelData = [];
-            // Table Headers
-            excelData.push(["ลำดับ", "รูปใบเสร็จ", "วันที่ (YYYY-MM-DD)", "หมวดหมู่", "ร้านค้า/ผู้ให้บริการ", "เลขที่ใบเสร็จ", "VAT (บาท)", "จำนวนเงินรวม (บาท)"]);
-
-            const imgSummaryMap = {};
-
-            // Table Body
-            rows.forEach(row => {
-                const rowNum = parseInt(row.querySelector('.row-number')?.innerText || '0', 10);
-                const imgRef = row.querySelectorAll('td')[1]?.innerText.replace(/\n/g, ' ').trim() || '';
-                const inputs = row.querySelectorAll('input');
-                const select = row.querySelector('select');
-
-                if (inputs.length >= 5 && select) {
-                    const vatVal = parseFloat(inputs[3].value) || 0;
-                    const amountVal = parseFloat(inputs[4].value) || 0;
-
-                    excelData.push([
-                        rowNum,
-                        imgRef,
-                        inputs[0].value || '',
-                        select.value || '',
-                        inputs[1].value || '',
-                        inputs[2].value || '',
-                        vatVal,
-                        amountVal
-                    ]);
-
-                    const cleanKey = imgRef.match(/รูปที่\s*\d+/) ? imgRef.match(/รูปที่\s*\d+/)[0] : imgRef;
-                    if (!imgSummaryMap[cleanKey]) {
-                        imgSummaryMap[cleanKey] = { count: 0, amount: 0, vat: 0 };
-                    }
-                    imgSummaryMap[cleanKey].count += 1;
-                    imgSummaryMap[cleanKey].amount += amountVal;
-                    imgSummaryMap[cleanKey].vat += vatVal;
-                }
-            });
-
-            // Table Footer Totals
-            const vatTotal = parseFloat(document.getElementById('vatTotal').innerText.replace(/,/g, '')) || 0;
-            const grandTotal = parseFloat(document.getElementById('grandTotal').innerText.replace(/,/g, '')) || 0;
-            excelData.push(["", "", "", "", "", "ยอดรวมทั้งหมด", vatTotal, grandTotal]);
-
-            // Append Per-Image Summary Section to Sheet
-            excelData.push([]);
-            excelData.push(["--- สรุปยอดรวมแยกตามรูปภาพ ---"]);
-            excelData.push(["รูปใบเสร็จ", "จำนวนบิล", "VAT รวม (บาท)", "ยอดเงินรวม (บาท)"]);
-
-            Object.keys(imgSummaryMap).forEach(key => {
-                const item = imgSummaryMap[key];
-                excelData.push([key, item.count, item.vat, item.amount]);
-            });
-
-            // Create Sheet & Download .xlsx
-            const worksheet = XLSX.utils.aoa_to_sheet(excelData);
-            const workbook = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(workbook, worksheet, "สรุปใบเสร็จ");
-
-            XLSX.writeFile(workbook, `สรุปใบเสร็จเบิกจ่ายเงิน_${new Date().toISOString().slice(0, 10)}.xlsx`);
         }
 
         // Export Current Table Data to Backup JSON File
