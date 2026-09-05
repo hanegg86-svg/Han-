@@ -132,6 +132,10 @@
                     <button onclick="exportToJSON()" class="bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold py-2 px-3 rounded-lg shadow transition-colors flex items-center gap-1">
                         <span>💾</span> สำรอง JSON
                     </button>
+                    <button onclick="document.getElementById('jsonFileInput').click()" class="bg-amber-700 hover:bg-amber-800 text-white text-sm font-semibold py-2 px-3 rounded-lg shadow transition-colors flex items-center gap-1">
+                        <span>📂</span> อัปโหลด JSON
+                    </button>
+                    <input type="file" id="jsonFileInput" accept=".json,application/json" class="hidden" onchange="importFromJSON(event)">
                     <button onclick="exportToCSV()" class="bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold py-2 px-3 rounded-lg shadow transition-colors flex items-center gap-1">
                         <span>📥</span> ส่งออก CSV
                     </button>
@@ -919,6 +923,54 @@
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
+        }
+
+        // Import Data from JSON File
+        function importFromJSON(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (!Array.isArray(data)) {
+                        alert('รูปแบบไฟล์ JSON ไม่ถูกต้อง (ข้อมูลต้องเป็น Array)');
+                        return;
+                    }
+
+                    if (data.length === 0) {
+                        alert('ไฟล์ JSON ไม่มีข้อมูลรายการ');
+                        return;
+                    }
+
+                    const tbody = document.getElementById('receiptTableBody');
+                    const existingRows = Array.from(tbody.querySelectorAll('tr')).filter(r => r.id !== 'emptyRow');
+
+                    let shouldClear = false;
+                    if (existingRows.length > 0) {
+                        shouldClear = confirm('ต้องการล้างข้อมูลเดิมในตารางก่อนนำเข้าหรือไม่?\n- กด "ตกลง (OK)" เพื่อแทนที่ข้อมูลเดิมทั้งหมด\n- กด "ยกเลิก (Cancel)" เพื่อเพิ่มต่อท้ายรายการเดิม');
+                    }
+
+                    if (shouldClear) {
+                        tbody.innerHTML = '';
+                    }
+
+                    data.forEach(item => {
+                        addRow(item, null, '', item.imgRef || 'นำเข้า');
+                    });
+
+                    sortByImg(true);
+                    calculateTotal();
+                    alert(`นำเข้าข้อมูลจาก JSON สำเร็จทั้งหมด ${data.length} รายการ`);
+                } catch (err) {
+                    console.error('Error importing JSON:', err);
+                    alert('เกิดข้อผิดพลาดในการอ่านไฟล์ JSON: ' + err.message);
+                } finally {
+                    event.target.value = ''; // รีเซ็ต input เพื่อให้เลือกไฟล์เดิมซ้ำได้
+                }
+            };
+            reader.readAsText(file, 'UTF-8');
         }
 
         // Export Data to CSV (with Thai Language UTF-8 BOM)
