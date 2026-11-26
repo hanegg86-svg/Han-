@@ -49,7 +49,7 @@
         <!-- Upload & Control Section -->
         <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
             <h2 class="text-lg font-bold text-slate-700 mb-4 flex items-center gap-2">
-                <span>📁</span> อัปโหลดรูปภาพใบเสร็จ (รองรับทุกประเภท)
+                <span>📁</span> อัปโหลดรูปภาพใบเสร็จ (บีบอัดขนาดอัตโนมัติ ≤ 200 KB/รูป)
             </h2>
             
             <div class="flex flex-col md:flex-row gap-4 items-center">
@@ -61,7 +61,7 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 0115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
                             </svg>
                             <p class="text-sm text-slate-600"><span class="font-semibold text-indigo-600">คลิกเพื่อเลือกรูป</span> หรือลากไฟล์มาวางที่นี่</p>
-                            <p class="text-xs text-slate-400 mt-1">รองรับไฟล์ JPG, PNG, WEBP (เลือกได้หลายรูปพร้อมกัน)</p>
+                            <p class="text-xs text-slate-400 mt-1">รองรับไฟล์ JPG, PNG, WEBP (ย่อขนาดไม่เกิน 200 KB อัตโนมัติ)</p>
                         </div>
                         <input id="imageInput" type="file" multiple accept="image/*" class="hidden" onchange="handleFileSelect(event)">
                     </label>
@@ -87,14 +87,14 @@
             <span id="statusMessage" class="text-sm font-medium">กำลังอ่านข้อมูลจากใบเสร็จ...</span>
         </div>
 
-        <!-- Monthly Storage Manager Toolbar -->
+        <!-- Monthly Storage Manager Toolbar (IndexedDB) -->
         <section class="bg-indigo-900 text-white rounded-xl shadow-sm p-4 flex flex-col md:flex-row items-center justify-between gap-4">
             <div class="flex items-center gap-2">
                 <span>🗄️</span>
-                <span class="font-bold text-sm">คลังข้อมูลรายเดือน (LocalStorage):</span>
+                <span class="font-bold text-sm">คลังข้อมูลรายเดือน (IndexedDB - เก็บตารางพร้อมรูปภาพ):</span>
             </div>
             <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
-                <select id="savedMonthSelect" class="bg-indigo-950 text-white text-xs px-3 py-2 rounded-lg border border-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 flex-1 md:w-44">
+                <select id="savedMonthSelect" class="bg-indigo-950 text-white text-xs px-3 py-2 rounded-lg border border-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 flex-1 md:w-48">
                     <option value="">-- เลือกเดือนที่บันทึก --</option>
                 </select>
                 <button onclick="loadMonthlyData()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold py-2 px-3 rounded-lg shadow transition-colors flex items-center gap-1">
@@ -225,51 +225,190 @@
     </div>
 
     <script>
-        // Store selected files & their Base64 data for PDF export
-        let selectedFiles = [];
+        // Store compressed image objects ({ index, name, type, data, sizeKB })
         let uploadedImagesBase64 = [];
 
         // Sorting tracking state
         let currentSortCol = 1; // Default: Sort by Image Column
         let currentSortAsc = true; // Default: Ascending (รูปที่ 1 -> รูปที่ N)
 
-        // Save & Restore API Key and Load Saved Months from localStorage
-        document.addEventListener('DOMContentLoaded', () => {
+        // ==========================================
+        // IndexedDB Setup & Helper Functions
+        // ==========================================
+        const DB_NAME = 'ReceiptSummaryDB';
+        const DB_VERSION = 1;
+        const STORE_NAME = 'monthly_records';
+
+        function openReceiptDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+                request.onupgradeneeded = (event) => {
+                    const db = event.target.result;
+                    if (!db.objectStoreNames.contains(STORE_NAME)) {
+                        db.createObjectStore(STORE_NAME, { keyPath: 'monthKey' });
+                    }
+                };
+                request.onsuccess = (event) => resolve(event.target.result);
+                request.onerror = (event) => reject(event.target.error);
+            });
+        }
+
+        async function dbGetAllMonths() {
+            const db = await openReceiptDB();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(STORE_NAME, 'readonly');
+                const store = tx.objectStore(STORE_NAME);
+                const req = store.getAllKeys();
+                req.onsuccess = () => resolve(req.result || []);
+                req.onerror = () => reject(req.error);
+            });
+        }
+
+        async function dbGetMonthRecord(monthKey) {
+            const db = await openReceiptDB();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(STORE_NAME, 'readonly');
+                const store = tx.objectStore(STORE_NAME);
+                const req = store.get(monthKey);
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+        }
+
+        async function dbSaveMonthRecord(record) {
+            const db = await openReceiptDB();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(STORE_NAME, 'readwrite');
+                const store = tx.objectStore(STORE_NAME);
+                const req = store.put(record);
+                req.onsuccess = () => resolve();
+                req.onerror = () => reject(req.error);
+            });
+        }
+
+        async function dbDeleteMonthRecord(monthKey) {
+            const db = await openReceiptDB();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(STORE_NAME, 'readwrite');
+                const store = tx.objectStore(STORE_NAME);
+                const req = store.delete(monthKey);
+                req.onsuccess = () => resolve();
+                req.onerror = () => reject(req.error);
+            });
+        }
+
+        // ==========================================
+        // Image Compression Function (Max <= 200 KB)
+        // ==========================================
+        function compressImageToMax200KB(file, maxBytes = 200 * 1024) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const img = new Image();
+                    img.onload = function() {
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+
+                        // กำหนดความกว้างสูงสุด 1280px เพื่อรักษาความคมชัดของตัวเลขบนใบเสร็จ
+                        let maxDimension = 1280;
+                        let width = img.width;
+                        let height = img.height;
+
+                        if (width > maxDimension || height > maxDimension) {
+                            if (width > height) {
+                                height = Math.round((height * maxDimension) / width);
+                                width = maxDimension;
+                            } else {
+                                width = Math.round((width * maxDimension) / height);
+                                height = maxDimension;
+                            }
+                        }
+
+                        canvas.width = width;
+                        canvas.height = height;
+                        ctx.fillStyle = '#FFFFFF';
+                        ctx.fillRect(0, 0, width, height);
+                        ctx.drawImage(img, 0, 0, width, height);
+
+                        // ลดระดับ Quality ทีละนิดจนกว่าขนาดไฟล์จะไม่เกิน 200 KB
+                        let quality = 0.85;
+                        let dataUrl = canvas.toDataURL('image/jpeg', quality);
+
+                        const getBase64ByteSize = (b64) => {
+                            const base64Str = b64.split(',')[1] || '';
+                            return Math.ceil((base64Str.length * 3) / 4);
+                        };
+
+                        while (getBase64ByteSize(dataUrl) > maxBytes && quality > 0.25) {
+                            quality -= 0.05;
+                            dataUrl = canvas.toDataURL('image/jpeg', quality);
+                        }
+
+                        // กรณีรูปมีรายละเอียดเยอะมากและยังเกิน 200 KB ให้ลดมิติภาพลงอีก
+                        let scaleAttempts = 0;
+                        while (getBase64ByteSize(dataUrl) > maxBytes && scaleAttempts < 4) {
+                            scaleAttempts++;
+                            width = Math.round(width * 0.8);
+                            height = Math.round(height * 0.8);
+                            canvas.width = width;
+                            canvas.height = height;
+                            ctx.fillStyle = '#FFFFFF';
+                            ctx.fillRect(0, 0, width, height);
+                            ctx.drawImage(img, 0, 0, width, height);
+                            dataUrl = canvas.toDataURL('image/jpeg', Math.max(quality, 0.5));
+                        }
+
+                        const finalBytes = getBase64ByteSize(dataUrl);
+                        resolve({
+                            dataUrl: dataUrl,
+                            type: 'image/jpeg',
+                            sizeKB: (finalBytes / 1024).toFixed(1)
+                        });
+                    };
+                    img.onerror = (err) => reject(err);
+                    img.src = event.target.result;
+                };
+                reader.onerror = (err) => reject(err);
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // ==========================================
+        // Initialization & API Key Persistence
+        // ==========================================
+        document.addEventListener('DOMContentLoaded', async () => {
             const savedKey = localStorage.getItem('gemini_api_key');
             if (savedKey) {
                 document.getElementById('apiKey').value = savedKey;
             }
-            refreshSavedMonthsDropdown();
+            await refreshSavedMonthsDropdown();
         });
 
         document.getElementById('apiKey').addEventListener('input', (e) => {
             localStorage.setItem('gemini_api_key', e.target.value.trim());
         });
 
-        // Refresh Monthly Dropdown List
-        function refreshSavedMonthsDropdown() {
+        // Refresh Monthly Dropdown List from IndexedDB
+        async function refreshSavedMonthsDropdown() {
             const select = document.getElementById('savedMonthSelect');
             select.innerHTML = '<option value="">-- เลือกเดือนที่บันทึก --</option>';
 
-            const monthKeys = [];
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (key.startsWith('receipt_monthly_')) {
-                    monthKeys.push(key.replace('receipt_monthly_', ''));
-                }
+            try {
+                const monthKeys = await dbGetAllMonths();
+                monthKeys.sort().reverse();
+                monthKeys.forEach(month => {
+                    const opt = document.createElement('option');
+                    opt.value = month;
+                    opt.innerText = `เดือน ${month}`;
+                    select.appendChild(opt);
+                });
+            } catch (err) {
+                console.error('Error reading IndexedDB keys:', err);
             }
-
-            monthKeys.sort().reverse();
-            monthKeys.forEach(month => {
-                const opt = document.createElement('option');
-                opt.value = month;
-                opt.innerText = `เดือน ${month}`;
-                select.appendChild(opt);
-            });
         }
 
-        // Save Current Table Data to Monthly LocalStorage
-        function saveMonthlyData() {
+        // Save Current Table Data + Compressed Images to IndexedDB
+        async function saveMonthlyData() {
             const tbody = document.getElementById('receiptTableBody');
             const rows = Array.from(tbody.querySelectorAll('tr')).filter(r => r.id !== 'emptyRow');
 
@@ -278,7 +417,6 @@
                 return;
             }
 
-            // Group data by YYYY-MM
             const monthlyGroup = {};
 
             rows.forEach(row => {
@@ -307,100 +445,118 @@
                 }
             });
 
-            // Save each month group to LocalStorage
-            Object.keys(monthlyGroup).forEach(monthKey => {
-                const existingDataStr = localStorage.getItem(`receipt_monthly_${monthKey}`);
+            try {
+                for (const monthKey of Object.keys(monthlyGroup)) {
+                    const existingRecord = await dbGetMonthRecord(monthKey);
 
-                if (existingDataStr) {
-                    if (!confirm(`เดือน ${monthKey} มีข้อมูลบันทึกอยู่แล้ว ต้องการเขียนทับด้วยข้อมูลปัจจุบันใช่หรือไม่? (กด Cancel เพื่อยกเลิก)`)) {
-                        return;
+                    if (existingRecord) {
+                        if (!confirm(`เดือน ${monthKey} มีข้อมูลบันทึกอยู่ใน IndexedDB แล้ว ต้องการเขียนทับด้วยข้อมูลปัจจุบันใช่หรือไม่? (กด Cancel เพื่อยกเลิก)`)) {
+                            continue;
+                        }
                     }
+
+                    // หาหมายเลขรูปภาพที่ถูกอ้างอิงในเดือนนี้เพื่อเก็บเฉพาะรูปที่เกี่ยวข้อง
+                    const referencedImgIndices = new Set();
+                    monthlyGroup[monthKey].forEach(item => {
+                        const match = item.imgRef.match(/รูปที่\s*(\d+)/);
+                        if (match) referencedImgIndices.add(parseInt(match[1], 10));
+                    });
+
+                    const relatedImages = uploadedImagesBase64.filter(img => referencedImgIndices.has(img.index));
+
+                    await dbSaveMonthRecord({
+                        monthKey: monthKey,
+                        updatedAt: new Date().toISOString(),
+                        items: monthlyGroup[monthKey],
+                        images: relatedImages.length > 0 ? relatedImages : uploadedImagesBase64
+                    });
                 }
 
-                localStorage.setItem(`receipt_monthly_${monthKey}`, JSON.stringify(monthlyGroup[monthKey]));
-            });
-
-            refreshSavedMonthsDropdown();
-            alert('บันทึกข้อมูลเรียบร้อยแล้ว!');
+                await refreshSavedMonthsDropdown();
+                alert('บันทึกข้อมูลตารางและรูปภาพลง IndexedDB เรียบร้อยแล้ว!');
+            } catch (err) {
+                console.error('Error saving to IndexedDB:', err);
+                alert('เกิดข้อผิดพลาดในการบันทึกข้อมูลลง IndexedDB: ' + err.message);
+            }
         }
 
-        // Load Selected Month Data from LocalStorage
-        function loadMonthlyData() {
+        // Load Selected Month Data + Images from IndexedDB
+        async function loadMonthlyData() {
             const monthKey = document.getElementById('savedMonthSelect').value;
             if (!monthKey) {
                 alert('โปรดเลือกเดือนที่ต้องการโหลดข้อมูล');
                 return;
             }
 
-            const dataStr = localStorage.getItem(`receipt_monthly_${monthKey}`);
-            if (!dataStr) {
-                alert('ไม่พบข้อมูลสำหรับเดือนที่เลือก');
-                return;
+            try {
+                const record = await dbGetMonthRecord(monthKey);
+                if (!record || !record.items) {
+                    alert('ไม่พบข้อมูลสำหรับเดือนที่เลือก');
+                    return;
+                }
+
+                const tbody = document.getElementById('receiptTableBody');
+                tbody.innerHTML = '';
+
+                record.items.forEach(item => {
+                    addRow(item, null, '', item.imgRef);
+                });
+
+                // กู้คืนรูปภาพที่บันทึกไว้คู่กับเดือนนี้เพื่อให้กดดูภาพขยายหรือส่งออก PDF ได้ทันที
+                uploadedImagesBase64 = Array.isArray(record.images) ? record.images : [];
+                renderPreviewThumbnails();
+
+                if (uploadedImagesBase64.length > 0) {
+                    document.getElementById('fileCountText').innerText = `โหลดรูปที่บันทึกไว้ ${uploadedImagesBase64.length} รูป`;
+                } else {
+                    document.getElementById('fileCountText').innerText = 'ยังไม่ได้เลือกไฟล์';
+                }
+
+                sortByImg(true);
+                alert(`โหลดข้อมูลเดือน ${monthKey} จำนวน ${record.items.length} รายการ (พร้อมรูปภาพ ${uploadedImagesBase64.length} รูป) เรียบร้อยแล้ว`);
+            } catch (err) {
+                console.error('Error loading from IndexedDB:', err);
+                alert('เกิดข้อผิดพลาดในการโหลดข้อมูล: ' + err.message);
             }
-
-            const items = JSON.parse(dataStr);
-            const tbody = document.getElementById('receiptTableBody');
-            tbody.innerHTML = '';
-
-            items.forEach(item => {
-                addRow(item, null, '', item.imgRef);
-            });
-
-            sortByImg(true);
-            alert(`โหลดข้อมูลเดือน ${monthKey} จำนวน ${items.length} รายการ เรียบร้อยแล้ว`);
         }
 
-        // Delete Selected Month Data from LocalStorage
-        function deleteMonthlyData() {
+        // Delete Selected Month Data from IndexedDB
+        async function deleteMonthlyData() {
             const monthKey = document.getElementById('savedMonthSelect').value;
             if (!monthKey) {
                 alert('โปรดเลือกเดือนที่ต้องการลบ');
                 return;
             }
 
-            if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบข้อมูลเดือน ${monthKey} ออกจากระบบ?`)) {
-                localStorage.removeItem(`receipt_monthly_${monthKey}`);
-                refreshSavedMonthsDropdown();
-                alert(`ลบข้อมูลเดือน ${monthKey} เรียบร้อยแล้ว`);
+            if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบข้อมูลเดือน ${monthKey} ออกจาก IndexedDB?`)) {
+                try {
+                    await dbDeleteMonthRecord(monthKey);
+                    await refreshSavedMonthsDropdown();
+                    alert(`ลบข้อมูลเดือน ${monthKey} เรียบร้อยแล้ว`);
+                } catch (err) {
+                    console.error('Error deleting from IndexedDB:', err);
+                    alert('เกิดข้อผิดพลาดในการลบข้อมูล: ' + err.message);
+                }
             }
         }
 
-        // Handle Image Selection & Preview (Preserves exact upload sequence using Promise.all)
-        async function handleFileSelect(event) {
-            const files = Array.from(event.target.files);
-            if (files.length === 0) return;
-
-            selectedFiles = files;
-            uploadedImagesBase64 = [];
-            document.getElementById('fileCountText').innerText = `เลือกแล้ว ${selectedFiles.length} ไฟล์`;
-            
+        // Render Thumbnail Preview Cards
+        function renderPreviewThumbnails() {
             const previewContainer = document.getElementById('previewContainer');
             previewContainer.innerHTML = '';
+
+            if (uploadedImagesBase64.length === 0) {
+                previewContainer.classList.add('hidden');
+                return;
+            }
+
             previewContainer.classList.remove('hidden');
 
-            const loadPromises = selectedFiles.map((file, index) => {
-                return new Promise((resolve) => {
-                    const reader = new FileReader();
-                    reader.onload = function(e) {
-                        resolve({
-                            index: index + 1,
-                            name: file.name,
-                            type: file.type || 'image/jpeg',
-                            data: e.target.result
-                        });
-                    };
-                    reader.readAsDataURL(file);
-                });
-            });
-
-            uploadedImagesBase64 = await Promise.all(loadPromises);
-
-            // Render Preview Cards with click to open full-size modal
             uploadedImagesBase64.forEach(imgObj => {
                 const div = document.createElement('div');
-                div.className = 'group relative w-20 h-24 border border-slate-200 rounded-lg overflow-hidden bg-slate-100 shadow-sm flex flex-col items-center justify-between p-1 cursor-pointer hover:border-indigo-500 hover:shadow-md transition-all';
-                div.title = 'คลิกเพื่อขยายดูภาพ';
-                div.onclick = () => openImageModal(imgObj.data, `รูปที่ ${imgObj.index} - ${imgObj.name}`);
+                div.className = 'group relative w-24 h-28 border border-slate-200 rounded-lg overflow-hidden bg-slate-100 shadow-sm flex flex-col items-center justify-between p-1 cursor-pointer hover:border-indigo-500 hover:shadow-md transition-all';
+                div.title = `คลิกเพื่อขยายดูภาพ (${imgObj.sizeKB || '<200'} KB)`;
+                div.onclick = () => openImageModal(imgObj.data, `รูปที่ ${imgObj.index} - ${imgObj.name} (${imgObj.sizeKB || '<200'} KB)`);
                 div.innerHTML = `
                     <div class="relative w-full h-16 overflow-hidden rounded">
                         <img src="${imgObj.data}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200">
@@ -408,10 +564,48 @@
                             🔍
                         </div>
                     </div>
-                    <span class="text-[10px] font-bold text-indigo-700">รูปที่ ${imgObj.index}</span>
+                    <span class="text-[10px] font-bold text-indigo-700 leading-tight">รูปที่ ${imgObj.index}</span>
+                    <span class="text-[9px] text-emerald-700 font-medium leading-tight">${imgObj.sizeKB || '<200'} KB</span>
                 `;
                 previewContainer.appendChild(div);
             });
+        }
+
+        // Handle Image Selection & Compress to <= 200 KB
+        async function handleFileSelect(event) {
+            const files = Array.from(event.target.files);
+            if (files.length === 0) return;
+
+            const fileCountText = document.getElementById('fileCountText');
+            const processBtn = document.getElementById('processBtn');
+            fileCountText.innerText = `กำลังบีบอัดรูปภาพ 0/${files.length}...`;
+            processBtn.disabled = true;
+
+            try {
+                const compressedResults = [];
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    fileCountText.innerText = `กำลังย่อขนาดรูปที่ ${i + 1}/${files.length}...`;
+                    const compressed = await compressImageToMax200KB(file, 200 * 1024);
+                    compressedResults.push({
+                        index: i + 1,
+                        name: file.name,
+                        type: compressed.type,
+                        data: compressed.dataUrl,
+                        sizeKB: compressed.sizeKB
+                    });
+                }
+
+                uploadedImagesBase64 = compressedResults;
+                fileCountText.innerText = `พร้อมประมวลผล ${uploadedImagesBase64.length} ไฟล์ (≤ 200 KB/รูป)`;
+                renderPreviewThumbnails();
+            } catch (err) {
+                console.error('Error compressing images:', err);
+                alert('เกิดข้อผิดพลาดในการย่อขนาดรูปภาพ: ' + err.message);
+                fileCountText.innerText = 'เกิดข้อผิดพลาดในการโหลดรูป';
+            } finally {
+                processBtn.disabled = false;
+            }
         }
 
         // Functions for Image Lightbox Modal
@@ -430,19 +624,6 @@
             const modalImg = document.getElementById('modalImageSrc');
             modal.classList.add('hidden');
             modalImg.src = '';
-        }
-
-        // Convert File to Base64 String (pure data without data:image/...)
-        function fileToBase64(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.readAsDataURL(file);
-                reader.onload = () => {
-                    const base64String = reader.result.split(',')[1];
-                    resolve(base64String);
-                };
-                reader.onerror = error => reject(error);
-            });
         }
 
         // Sort by Image Index Number (Default: รูปที่ 1 -> รูปที่ N)
@@ -496,14 +677,12 @@
                 let valA = getCellValue(a, colIndex);
                 let valB = getCellValue(b, colIndex);
 
-                // Numeric comparison for VAT and Amount
                 if (colIndex === 6 || colIndex === 7) {
                     const numA = parseFloat(valA) || 0;
                     const numB = parseFloat(valB) || 0;
                     return currentSortAsc ? numA - numB : numB - numA;
                 }
 
-                // Standard Thai string comparison
                 return currentSortAsc 
                     ? valA.localeCompare(valB, 'th', { numeric: true }) 
                     : valB.localeCompare(valA, 'th', { numeric: true });
@@ -543,7 +722,7 @@
             });
         }
 
-        // Process Images using Gemini Flash Lite 3.5 API
+        // Process Compressed Images using Gemini Flash Lite 3.5 API
         async function processImages() {
             const apiKey = document.getElementById('apiKey').value.trim();
             if (!apiKey) {
@@ -551,7 +730,7 @@
                 return;
             }
 
-            if (selectedFiles.length === 0) {
+            if (uploadedImagesBase64.length === 0) {
                 alert('โปรดเลือกไฟล์รูปภาพใบเสร็จอย่างน้อย 1 ไฟล์');
                 return;
             }
@@ -623,13 +802,13 @@
 - ตอบกลับเฉพาะโครงสร้าง JSON เท่านั้น ห้ามใส่ข้อความเกริ่นนำหรือ Markdown อื่น
             `.trim();
 
-            for (let i = 0; i < selectedFiles.length; i++) {
-                const file = selectedFiles[i];
-                const imageIndexNumber = i + 1;
-                statusMessage.innerText = `กำลังประมวลผลรูปที่ ${imageIndexNumber} จาก ${selectedFiles.length}... (${file.name})`;
+            for (let i = 0; i < uploadedImagesBase64.length; i++) {
+                const imgObj = uploadedImagesBase64[i];
+                const imageIndexNumber = imgObj.index;
+                statusMessage.innerText = `กำลังประมวลผลรูปที่ ${imageIndexNumber} จาก ${uploadedImagesBase64.length}... (${imgObj.name} - ${imgObj.sizeKB} KB)`;
 
                 try {
-                    const base64Data = await fileToBase64(file);
+                    const pureBase64 = imgObj.data.split(',')[1];
                     
                     const requestBody = {
                         contents: [
@@ -638,8 +817,8 @@
                                     { text: promptText },
                                     {
                                         inline_data: {
-                                            mime_type: file.type || "image/jpeg",
-                                            data: base64Data
+                                            mime_type: imgObj.type || "image/jpeg",
+                                            data: pureBase64
                                         }
                                     }
                                 ]
@@ -667,12 +846,12 @@
                     if (textResponse) {
                         const parsedData = JSON.parse(textResponse);
                         const items = Array.isArray(parsedData) ? parsedData : [parsedData];
-                        items.forEach(item => addRow(item, imageIndexNumber, file.name));
+                        items.forEach(item => addRow(item, imageIndexNumber, imgObj.name));
                     }
 
                 } catch (error) {
                     console.error('Error processing image:', error);
-                    alert(`เกิดข้อผิดพลาดในการประมวลผลรูป ${file.name}: ${error.message}`);
+                    alert(`เกิดข้อผิดพลาดในการประมวลผลรูป ${imgObj.name}: ${error.message}`);
                 }
             }
 
@@ -859,7 +1038,6 @@
                 return;
             }
 
-            // Sort keys nicely (รูปที่ 1, รูปที่ 2 ... รูปที่ N, เพิ่มเอง)
             keys.sort((a, b) => {
                 const numA = a.match(/\d+/) ? parseInt(a.match(/\d+/)[0], 10) : 99999;
                 const numB = b.match(/\d+/) ? parseInt(b.match(/\d+/)[0], 10) : 99999;
@@ -886,7 +1064,7 @@
             });
         }
 
-        // Export Current Table Data to Backup JSON File
+        // Export Current Table Data + Compressed Images to Backup JSON File
         function exportToJSON() {
             const tbody = document.getElementById('receiptTableBody');
             const rows = Array.from(tbody.querySelectorAll('tr')).filter(r => r.id !== 'emptyRow');
@@ -896,7 +1074,7 @@
                 return;
             }
 
-            const data = rows.map((row, index) => {
+            const items = rows.map((row, index) => {
                 const imgRef = row.querySelectorAll('td')[1]?.innerText.replace(/\n/g, ' ').trim() || 'เพิ่มเอง';
                 const inputs = row.querySelectorAll('input');
                 const select = row.querySelector('select');
@@ -913,7 +1091,14 @@
                 };
             });
 
-            const jsonString = JSON.stringify(data, null, 2);
+            const backupPayload = {
+                version: 2,
+                exportedAt: new Date().toISOString(),
+                items: items,
+                images: uploadedImagesBase64
+            };
+
+            const jsonString = JSON.stringify(backupPayload, null, 2);
             const blob = new Blob([jsonString], { type: 'application/json;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
@@ -925,7 +1110,7 @@
             URL.revokeObjectURL(url);
         }
 
-        // Import Data from JSON File
+        // Import Data from JSON File (Supports both v1 Array and v2 Object with Images)
         function importFromJSON(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -933,13 +1118,21 @@
             const reader = new FileReader();
             reader.onload = function(e) {
                 try {
-                    const data = JSON.parse(e.target.result);
-                    if (!Array.isArray(data)) {
-                        alert('รูปแบบไฟล์ JSON ไม่ถูกต้อง (ข้อมูลต้องเป็น Array)');
+                    const parsed = JSON.parse(e.target.result);
+                    let items = [];
+                    let importedImages = [];
+
+                    if (Array.isArray(parsed)) {
+                        items = parsed;
+                    } else if (parsed && Array.isArray(parsed.items)) {
+                        items = parsed.items;
+                        importedImages = Array.isArray(parsed.images) ? parsed.images : [];
+                    } else {
+                        alert('รูปแบบไฟล์ JSON ไม่ถูกต้อง');
                         return;
                     }
 
-                    if (data.length === 0) {
+                    if (items.length === 0) {
                         alert('ไฟล์ JSON ไม่มีข้อมูลรายการ');
                         return;
                     }
@@ -954,20 +1147,27 @@
 
                     if (shouldClear) {
                         tbody.innerHTML = '';
+                        if (importedImages.length > 0) {
+                            uploadedImagesBase64 = importedImages;
+                            renderPreviewThumbnails();
+                        }
+                    } else if (uploadedImagesBase64.length === 0 && importedImages.length > 0) {
+                        uploadedImagesBase64 = importedImages;
+                        renderPreviewThumbnails();
                     }
 
-                    data.forEach(item => {
+                    items.forEach(item => {
                         addRow(item, null, '', item.imgRef || 'นำเข้า');
                     });
 
                     sortByImg(true);
                     calculateTotal();
-                    alert(`นำเข้าข้อมูลจาก JSON สำเร็จทั้งหมด ${data.length} รายการ`);
+                    alert(`นำเข้าข้อมูลจาก JSON สำเร็จทั้งหมด ${items.length} รายการ`);
                 } catch (err) {
                     console.error('Error importing JSON:', err);
                     alert('เกิดข้อผิดพลาดในการอ่านไฟล์ JSON: ' + err.message);
                 } finally {
-                    event.target.value = ''; // รีเซ็ต input เพื่อให้เลือกไฟล์เดิมซ้ำได้
+                    event.target.value = '';
                 }
             };
             reader.readAsText(file, 'UTF-8');
@@ -1039,11 +1239,10 @@
         // Export Uploaded Images to PDF: 2 Images per A4 Page (Strict Ascending Upload Sequence 1..N)
         async function exportToPDF() {
             if (uploadedImagesBase64.length === 0) {
-                alert('โปรดอัปโหลดรูปภาพใบเสร็จอย่างน้อย 1 รูป ก่อนกดส่งออก PDF');
+                alert('โปรดอัปโหลดรูปภาพใบเสร็จ (หรือโหลดข้อมูลเดือนที่บันทึกไว้) อย่างน้อย 1 รูป ก่อนกดส่งออก PDF');
                 return;
             }
 
-            // Ensure strict sorting by index 1 -> N before PDF generation
             const sortedImages = [...uploadedImagesBase64].sort((a, b) => a.index - b.index);
 
             const { jsPDF } = window.jspdf;
@@ -1058,7 +1257,6 @@
             for (let i = 0; i < sortedImages.length; i++) {
                 const slotIndex = i % 2; // 0 = Top slot, 1 = Bottom slot
                 
-                // Add new page when moving to an even index > 0 (after filling 2 slots)
                 if (i > 0 && slotIndex === 0) {
                     doc.addPage();
                 }
@@ -1066,13 +1264,11 @@
                 const imgObj = sortedImages[i];
                 const slotStartY = margin + (slotIndex * (maxHPerSlot + margin));
 
-                // Header info for each image slot
                 doc.setFontSize(9);
                 doc.setTextColor(100, 116, 139);
                 doc.text(`Attachment Receipt #${imgObj.index} of ${sortedImages.length} - ${imgObj.name}`, margin, slotStartY + 4);
 
                 try {
-                    // Load image to get original dimensions and calculate fit ratio
                     const tempImg = new Image();
                     tempImg.src = imgObj.data;
                     await new Promise((resolve) => { tempImg.onload = resolve; });
@@ -1085,11 +1281,10 @@
                     const renderW = imgW * ratio;
                     const renderH = imgH * ratio;
 
-                    // Center image horizontally and vertically in its slot
                     const x = (pageWidth - renderW) / 2;
                     const y = slotStartY + 7 + ((availableH - renderH) / 2);
 
-                    const format = imgObj.type.includes('png') ? 'PNG' : 'JPEG';
+                    const format = imgObj.type && imgObj.type.includes('png') ? 'PNG' : 'JPEG';
                     doc.addImage(imgObj.data, format, x, y, renderW, renderH, undefined, 'FAST');
                 } catch (e) {
                     console.error('Error rendering image to PDF:', e);
